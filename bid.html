@@ -37,6 +37,9 @@
     td { padding: 7px 10px; text-align: right; border-bottom: 1px solid #f0f0f0; }
     td:first-child, td:nth-child(2) { text-align: left; }
     .tbl-wrap { overflow-x: auto; }
+    .search-note { font-size: 0.78rem; color: #888; margin: 4px 0 16px; }
+    .targets-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .targets-head select { padding: 5px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem; }
   </style>
 </head>
 <body>
@@ -56,9 +59,19 @@
       <input type="text" class="bid-search" id="bidSearch" placeholder="Search a player…" autocomplete="off">
       <div class="search-dd" id="searchDD" style="display:none"></div>
     </div>
+    <div class="search-note">Kickers and DST aren't individually valued in v1 — bid them off your flat $1/spot reserve, not this tool.</div>
     <div id="adviceWrap"></div>
 
-    <div class="section-title">Top Remaining Targets</div>
+    <div class="targets-head">
+      <div class="section-title" style="margin:0">Top Remaining Targets</div>
+      <select id="posFilter">
+        <option value="ALL">All positions</option>
+        <option value="QB">QB</option>
+        <option value="RB">RB</option>
+        <option value="WR">WR</option>
+        <option value="TE">TE</option>
+      </select>
+    </div>
     <div class="tbl-wrap">
       <table>
         <thead><tr><th>Player</th><th>Pos</th><th>$ Value</th><th>VBD</th></tr></thead>
@@ -273,17 +286,25 @@
 
     // ── Top targets table ───────────────────────────────────────────────────
     const topBody = document.getElementById('topBody');
-    byValue.slice(0, 30).forEach(p => {
-      const tr = document.createElement('tr');
-      tr.style.cursor = 'pointer';
-      [p.name, p.position, '$' + dollarOf(p), p.vbd.toFixed(1)].forEach(text => {
-        const td = document.createElement('td');
-        td.textContent = text;
-        tr.appendChild(td);
+    const posFilterEl = document.getElementById('posFilter');
+    function renderTopTable() {
+      while (topBody.firstChild) topBody.removeChild(topBody.firstChild);
+      const pos = posFilterEl.value;
+      const filtered = pos === 'ALL' ? byValue : byValue.filter(p => p.position === pos);
+      filtered.slice(0, 30).forEach(p => {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        [p.name, p.position, '$' + dollarOf(p), p.vbd.toFixed(1)].forEach(text => {
+          const td = document.createElement('td');
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        tr.addEventListener('click', () => { searchEl.value = p.name; renderAdvice(p); });
+        topBody.appendChild(tr);
       });
-      tr.addEventListener('click', () => { searchEl.value = p.name; renderAdvice(p); });
-      topBody.appendChild(tr);
-    });
+    }
+    posFilterEl.addEventListener('change', renderTopTable);
+    renderTopTable();
   })();
   </script>
 </body>
