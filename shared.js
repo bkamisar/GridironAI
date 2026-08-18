@@ -161,10 +161,27 @@ function computeReplacementLevels(players, teams, slots) {
   return repl;
 }
 
+// ── VBD PIPELINE ────────────────────────────────────────────────────────────
+// Scores every valued-position player, computes VBD against superflex-aware
+// replacement level, sorts descending. Returns { players, replacement, startable }.
+function valuePlayers(players, league) {
+  const scored = players
+    .filter(p => VALUED_POSITIONS.indexOf(p.position) !== -1)
+    .map(p => Object.assign({}, p, { points: scorePlayer(p, league.scoring) }));
+
+  const replacement = computeReplacementLevels(scored, league.teams, league.rosterSlots);
+  const startable = computeStartableCounts(scored, league.teams, league.rosterSlots);
+
+  scored.forEach(p => { p.vbd = p.points - (replacement[p.position] || 0); });
+  scored.sort((a, b) => b.vbd - a.vbd);
+
+  return { players: scored, replacement: replacement, startable: startable };
+}
+
 // ── NODE EXPORT (test-only; no-op in the browser) ─────────────────────────────
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     esc, parseCSV, parseCSVLine, parseLeagueTycoonCSV, scorePlayer,
-    computeStartableCounts, computeReplacementLevels,
+    computeStartableCounts, computeReplacementLevels, valuePlayers,
   };
 }

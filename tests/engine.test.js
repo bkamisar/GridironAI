@@ -179,5 +179,41 @@ test('computeReplacementLevels is 0 when there are not enough players', () => {
   assert.strictEqual(repl.TE, 0); // need a 3rd TE (index 2), none exists
 });
 
+// ── valuePlayers ──
+test('valuePlayers scores, computes VBD, and sorts descending by VBD', () => {
+  const players = [
+    { id: 'qb1', position: 'QB', stats: { passYd: 4000, passTD: 30, int: 10 } }, // 160+180-40=300
+    { id: 'qb2', position: 'QB', stats: { passYd: 3000, passTD: 20, int: 10 } }, // 120+120-40=200
+    { id: 'qb3', position: 'QB', stats: { passYd: 2500, passTD: 15, int: 10 } }, // 100+90-40=150
+  ];
+  const league = {
+    teams: 1,
+    rosterSlots: { QB: 1, RB: 0, WR: 0, TE: 0, FLEX: 0, SUPERFLEX: 0 },
+    scoring: DYNASTY_CAP_SCORING,
+  };
+  const result = engine.valuePlayers(players, league);
+  // startable QB = 1 -> replacement = qb2's points (200)
+  assert.strictEqual(result.replacement.QB, 200);
+  assert.strictEqual(result.players[0].id, 'qb1');
+  assert.ok(Math.abs(result.players[0].vbd - 100) < 0.001); // 300 - 200
+  assert.ok(Math.abs(result.players[1].vbd - 0) < 0.001);   // 200 - 200
+  assert.ok(Math.abs(result.players[2].vbd - -50) < 0.001); // 150 - 200
+});
+
+test('valuePlayers excludes K/DST from the valued population', () => {
+  const players = [
+    { id: 'k1', position: 'K', stats: {} },
+    { id: 'qb1', position: 'QB', stats: { passYd: 100 } },
+  ];
+  const league = {
+    teams: 1,
+    rosterSlots: { QB: 1, RB: 0, WR: 0, TE: 0, FLEX: 0, SUPERFLEX: 0 },
+    scoring: DYNASTY_CAP_SCORING,
+  };
+  const result = engine.valuePlayers(players, league);
+  assert.strictEqual(result.players.length, 1);
+  assert.strictEqual(result.players[0].id, 'qb1');
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);
