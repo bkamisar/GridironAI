@@ -38,6 +38,9 @@
     td:first-child, td:nth-child(2) { text-align: left; }
     .tbl-wrap { overflow-x: auto; }
     .search-note { font-size: 0.78rem; color: #888; margin: 4px 0 16px; }
+    .lineup-impact { margin: 4px 0 16px; padding: 9px 14px; border-radius: 8px; font-size: 0.86rem; }
+    .lineup-starts { background: #e8f0fe; color: #1557b0; }
+    .lineup-bench { background: #f5f5f5; color: #666; }
     .targets-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .targets-head select { padding: 5px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem; }
   </style>
@@ -114,6 +117,10 @@
     function dollarOf(p) { return dollars[p.id] || 1; }
 
     const cap = computeCapSituation(players, myTeam, LEAGUE);
+
+    // ── My current lineup (for lineup-impact previews) ────────────────────────
+    const myRoster = valued.players.filter(p => p.team === myTeam);
+    const myLineup = optimizeLineup(myRoster, LEAGUE.rosterSlots);
 
     // ── Cap header ──────────────────────────────────────────────────────────
     function capItem(label, value, cls) {
@@ -197,6 +204,26 @@
       strip.appendChild(bandDiv('band-stretch', 'Stretch', '≤ $' + stretchCeil));
       strip.appendChild(bandDiv('band-over', 'Overpay', '> $' + stretchCeil));
       card.appendChild(strip);
+
+      const afterLineup = optimizeLineup(myRoster.concat([p]), LEAGUE.rosterSlots);
+      const impact = lineupImpact(myLineup, afterLineup, p.id);
+      const lineupDiv = document.createElement('div');
+      if (impact.landedSlot) {
+        lineupDiv.className = 'lineup-impact lineup-starts';
+        const strong = document.createElement('strong');
+        strong.textContent = 'Starts at ' + impact.landedSlot + '. ';
+        lineupDiv.appendChild(strong);
+        if (impact.bumped.length) {
+          lineupDiv.appendChild(document.createTextNode(
+            'Bumps ' + impact.bumped.map(b => b.name).join(', ') + ' to your bench. '
+          ));
+        }
+        lineupDiv.appendChild(document.createTextNode('+' + impact.pointsDelta.toFixed(1) + ' starting pts.'));
+      } else {
+        lineupDiv.className = 'lineup-impact lineup-bench';
+        lineupDiv.textContent = 'Doesn’t crack your current starting lineup — bench/depth only.';
+      }
+      card.appendChild(lineupDiv);
 
       const toggle = document.createElement('div');
       toggle.className = 'ps-toggle';

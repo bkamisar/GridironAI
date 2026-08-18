@@ -221,6 +221,79 @@ function computeDollarValues(valuedResult, league) {
   return dollars;
 }
 
+// ── LINEUP OPTIMIZATION (single team) ─────────────────────────────────────────
+// Assigns ONE team's players to starting slots to maximize total starting
+// points — same greedy logic as computeStartableCounts (base slots, then
+// FLEX, then SUPERFLEX awarded to the highest-scoring eligible leftover),
+// applied to a single roster instead of a league-wide population. Used for
+// lineup-impact previews: "does this player start for me, and who does he
+// bump?" Ranks by raw points (not VBD) — the goal here is maximizing this
+// team's total output, not marginal value over league replacement.
+function optimizeLineup(players, slots) {
+  const groups = byPositionDesc(players);
+  const bySlot = { QB: [], RB: [], WR: [], TE: [], FLEX: [], SUPERFLEX: [] };
+  const used = new Set();
+
+  VALUED_POSITIONS.forEach(pos => {
+    const list = groups[pos] || [];
+    const n = slots[pos] || 0;
+    for (let i = 0; i < n && i < list.length; i++) {
+      bySlot[pos].push(list[i]);
+      used.add(list[i].id);
+    }
+  });
+
+  function bestUnused(eligible) {
+    let best = null;
+    eligible.forEach(pos => {
+      (groups[pos] || []).forEach(p => {
+        if (!used.has(p.id) && (best === null || p.points > best.points)) best = p;
+      });
+    });
+    return best;
+  }
+
+  for (let i = 0; i < (slots.FLEX || 0); i++) {
+    const p = bestUnused(FLEX_ELIGIBLE);
+    if (!p) break;
+    bySlot.FLEX.push(p);
+    used.add(p.id);
+  }
+  for (let i = 0; i < (slots.SUPERFLEX || 0); i++) {
+    const p = bestUnused(SUPERFLEX_ELIGIBLE);
+    if (!p) break;
+    bySlot.SUPERFLEX.push(p);
+    used.add(p.id);
+  }
+
+  const starters = [].concat(bySlot.QB, bySlot.RB, bySlot.WR, bySlot.TE, bySlot.FLEX, bySlot.SUPERFLEX);
+  const bench = players.filter(p => !used.has(p.id));
+  return {
+    bySlot: bySlot,
+    starters: starters,
+    starterIds: new Set(starters.map(p => p.id)),
+    bench: bench,
+    startersTotal: starters.reduce((s, p) => s + p.points, 0),
+  };
+}
+
+// Describes a hypothetical add's impact on a lineup: which slot the
+// candidate would occupy (null if he doesn't crack the starting lineup),
+// which currently-starting players get displaced to the bench, and the net
+// change in total starting points.
+function lineupImpact(beforeLineup, afterLineup, candidateId) {
+  let landedSlot = null;
+  ['QB', 'RB', 'WR', 'TE', 'FLEX', 'SUPERFLEX'].forEach(slot => {
+    if (afterLineup.bySlot[slot].some(p => p.id === candidateId)) landedSlot = slot;
+  });
+  const bumped = beforeLineup.starters.filter(p => !afterLineup.starterIds.has(p.id));
+  return {
+    landedSlot: landedSlot,
+    bumped: bumped,
+    pointsDelta: afterLineup.startersTotal - beforeLineup.startersTotal,
+  };
+}
+
 // ── CAP SITUATION ──────────────────────────────────────────────────────────
 function computeCapSituation(rows, teamName, league) {
   const used = rows
@@ -293,5 +366,6 @@ if (typeof module !== 'undefined' && module.exports) {
     esc, parseCSV, parseCSVLine, parseLeagueTycoonCSV, scorePlayer,
     computeStartableCounts, computeReplacementLevels, valuePlayers,
     computeDollarValues, computeCapSituation, applyCapImpact, isCapLegal,
+    optimizeLineup, lineupImpact,
   };
 }

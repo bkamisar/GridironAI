@@ -305,5 +305,70 @@ test('isCapLegal handles a negative commitment (e.g. a trade sending salary away
   assert.strictEqual(engine.isCapLegal(1050, -100, league), true); // 950 <= 1000
 });
 
+// ── optimizeLineup / lineupImpact ──
+function mkP(id, position, points) { return { id: id, position: position, points: points }; }
+
+test('optimizeLineup fills base slots by position and sums starters total', () => {
+  const roster = [mkP('qb1', 'QB', 300), mkP('rb1', 'RB', 200), mkP('rb2', 'RB', 150), mkP('wr1', 'WR', 180)];
+  const slots = { QB: 1, RB: 2, WR: 1, TE: 0, FLEX: 0, SUPERFLEX: 0 };
+  const lineup = engine.optimizeLineup(roster, slots);
+  assert.strictEqual(lineup.bySlot.QB.length, 1);
+  assert.strictEqual(lineup.bySlot.RB.length, 2);
+  assert.strictEqual(lineup.bySlot.WR.length, 1);
+  assert.strictEqual(lineup.bench.length, 0);
+  assert.strictEqual(lineup.startersTotal, 300 + 200 + 150 + 180);
+});
+
+test('optimizeLineup awards FLEX to the best leftover RB/WR/TE and benches the rest', () => {
+  const roster = [mkP('rb1', 'RB', 100), mkP('rb2', 'RB', 80), mkP('wr1', 'WR', 90), mkP('wr2', 'WR', 70)];
+  const slots = { QB: 0, RB: 1, WR: 1, TE: 0, FLEX: 1, SUPERFLEX: 0 };
+  const lineup = engine.optimizeLineup(roster, slots);
+  // base: rb1, wr1. Leftovers: rb2(80) vs wr2(70) -> FLEX = rb2.
+  assert.strictEqual(lineup.bySlot.FLEX[0].id, 'rb2');
+  assert.strictEqual(lineup.bench.length, 1);
+  assert.strictEqual(lineup.bench[0].id, 'wr2');
+});
+
+test('optimizeLineup awards SUPERFLEX to a QB2 when he beats flex-eligible leftovers', () => {
+  const roster = [mkP('qb1', 'QB', 400), mkP('qb2', 'QB', 380), mkP('rb1', 'RB', 100), mkP('wr1', 'WR', 90)];
+  const slots = { QB: 1, RB: 1, WR: 1, TE: 0, FLEX: 0, SUPERFLEX: 1 };
+  const lineup = engine.optimizeLineup(roster, slots);
+  assert.strictEqual(lineup.bySlot.SUPERFLEX[0].id, 'qb2');
+  assert.strictEqual(lineup.bench.length, 0);
+});
+
+test('optimizeLineup benches players beyond all slots', () => {
+  const roster = [mkP('wr1', 'WR', 90), mkP('wr2', 'WR', 70), mkP('wr3', 'WR', 50)];
+  const slots = { QB: 0, RB: 0, WR: 1, TE: 0, FLEX: 0, SUPERFLEX: 0 };
+  const lineup = engine.optimizeLineup(roster, slots);
+  assert.strictEqual(lineup.bySlot.WR.length, 1);
+  assert.strictEqual(lineup.bench.length, 2);
+});
+
+test('lineupImpact reports the slot a candidate lands in and who gets bumped', () => {
+  const before = [mkP('rb1', 'RB', 100)];
+  const slots = { QB: 0, RB: 1, WR: 0, TE: 0, FLEX: 0, SUPERFLEX: 0 };
+  const beforeLineup = engine.optimizeLineup(before, slots);
+  const candidate = mkP('rb2', 'RB', 150); // beats rb1 outright for the single RB slot
+  const afterLineup = engine.optimizeLineup(before.concat([candidate]), slots);
+  const impact = engine.lineupImpact(beforeLineup, afterLineup, 'rb2');
+  assert.strictEqual(impact.landedSlot, 'RB');
+  assert.strictEqual(impact.bumped.length, 1);
+  assert.strictEqual(impact.bumped[0].id, 'rb1');
+  assert.strictEqual(impact.pointsDelta, 150 - 100);
+});
+
+test('lineupImpact reports null landedSlot and no bumps when the candidate does not crack the lineup', () => {
+  const before = [mkP('rb1', 'RB', 100), mkP('rb2', 'RB', 90)];
+  const slots = { QB: 0, RB: 2, WR: 0, TE: 0, FLEX: 0, SUPERFLEX: 0 };
+  const beforeLineup = engine.optimizeLineup(before, slots);
+  const candidate = mkP('rb3', 'RB', 10); // below both current starters, no FLEX to fall back to
+  const afterLineup = engine.optimizeLineup(before.concat([candidate]), slots);
+  const impact = engine.lineupImpact(beforeLineup, afterLineup, 'rb3');
+  assert.strictEqual(impact.landedSlot, null);
+  assert.strictEqual(impact.bumped.length, 0);
+  assert.strictEqual(impact.pointsDelta, 0);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);

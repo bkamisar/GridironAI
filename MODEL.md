@@ -63,7 +63,42 @@ active roster/bench, 25% on the practice squad, 50% on IR
 (`applyCapImpact`). This only affects the cap-room preview in the Bid
 Advisor — never the player's underlying $ value.
 
-## 6. Tunable knobs
+## 6. Hard cap legality
+
+This league has no cash trades (unlike Ottoneu) to bail out an over-cap
+roster, so exceeding the cap isn't a soft warning — it's illegal.
+`isCapLegal(currentUsed, additionalCommitment, league)` is the one
+reusable primitive for this: pass a team's currently-committed salary and
+the net $ change a hypothetical move would add (negative for a move that
+frees cap, e.g. sending salary away in a trade). Equality (exactly at the
+cap) is legal. The Bid Advisor uses it both for the team-wide cap header
+and for a specific bid's cap impact, rendering an unmissable "ILLEGAL"
+banner rather than colored text when a move would violate it. A future
+trade tool should reuse this same function rather than re-deriving the
+legality check.
+
+## 7. Lineup impact (`optimizeLineup` / `lineupImpact`)
+
+Answers "does this player start for me, and who does he bump?" for a
+candidate the user is considering bidding on. `optimizeLineup(players,
+slots)` is the single-team analog of §3's replacement-level algorithm —
+same greedy logic (base slots, then FLEX, then SUPERFLEX to the
+highest-scoring eligible leftover), applied to one team's roster instead
+of the league-wide population, ranked by **raw points, not VBD** (the
+goal here is maximizing this team's total starting output, not marginal
+value over league replacement — those are different questions).
+
+`lineupImpact(beforeLineup, afterLineup, candidateId)` diffs two
+`optimizeLineup` results: which slot the candidate lands in (`null` if he
+doesn't crack the lineup), which currently-starting players get displaced
+to the bench (a simple set-difference — this correctly captures cascading
+reshuffles, e.g. a new RB2 pushing the old RB2 into FLEX and bumping the
+old FLEX starter to the bench, with no special-casing needed), and the
+net change in total starting points. The Bid Advisor recomputes this for
+every candidate against the user's current roster (`myRoster` = valued
+players where `team === myTeam`).
+
+## 8. Tunable knobs
 
 | Knob | Where | Current | Meaning |
 |---|---|---|---|
@@ -71,7 +106,7 @@ Advisor — never the player's underlying $ value.
 | $ conversion population | `computeDollarValues` (`shared.js`) | starting + bench slots, excl. PS/IR | who gets an individually computed $ value vs. a flat $1 |
 | `psCapDiscount` / `irCapDiscount` | `leagues.js` | 25% / 50% | cap-impact preview multipliers |
 
-## 7. Known limitations (accepted for v1)
+## 9. Known limitations (accepted for v1)
 
 - K/DST have no individual $ values (flat $1/spot reserve only).
 - No multi-year dynasty valuation horizon — this is a single-season
@@ -82,3 +117,8 @@ Advisor — never the player's underlying $ value.
   teams' cap totals use full (undiscounted) salary as an approximation.
   Your own team's PS/IR status is tracked precisely via the Bid
   Advisor's toggle.
+- `optimizeLineup` doesn't know which of the user's own rostered players
+  are on PS/IR (same data gap as above), so it treats the user's entire
+  CSV-listed roster as active-roster-eligible for lineup purposes. In
+  practice this only matters if the user is actively stashing players on
+  PS/IR, which most managers in this league don't do.
