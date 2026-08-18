@@ -107,7 +107,64 @@ function scorePlayer(player, scoring) {
   return total;
 }
 
+// ── REPLACEMENT LEVEL (superflex-aware) ───────────────────────────────────────
+// Ported from Fantasy Football tools/src/core/replacement.ts. K/DST excluded —
+// v1 doesn't statistically value them (see design spec Scope boundaries).
+const VALUED_POSITIONS = ['QB', 'RB', 'WR', 'TE'];
+const FLEX_ELIGIBLE = ['RB', 'WR', 'TE'];
+const SUPERFLEX_ELIGIBLE = ['QB', 'RB', 'WR', 'TE'];
+
+function byPositionDesc(players) {
+  const groups = {};
+  players.forEach(p => {
+    if (!groups[p.position]) groups[p.position] = [];
+    groups[p.position].push(p);
+  });
+  for (const pos in groups) groups[pos].sort((a, b) => b.points - a.points);
+  return groups;
+}
+
+function computeStartableCounts(players, teams, slots) {
+  const groups = byPositionDesc(players);
+  const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
+  VALUED_POSITIONS.forEach(pos => { counts[pos] = teams * (slots[pos] || 0); });
+
+  function award(spots, eligible) {
+    for (let i = 0; i < spots; i++) {
+      let bestPos = null, bestPts = -Infinity;
+      eligible.forEach(pos => {
+        const list = groups[pos] || [];
+        const nextIdx = counts[pos];
+        if (nextIdx < list.length && list[nextIdx].points > bestPts) {
+          bestPts = list[nextIdx].points;
+          bestPos = pos;
+        }
+      });
+      if (bestPos === null) break;
+      counts[bestPos] += 1;
+    }
+  }
+  award(teams * (slots.FLEX || 0), FLEX_ELIGIBLE);
+  award(teams * (slots.SUPERFLEX || 0), SUPERFLEX_ELIGIBLE);
+  return counts;
+}
+
+function computeReplacementLevels(players, teams, slots) {
+  const groups = byPositionDesc(players);
+  const counts = computeStartableCounts(players, teams, slots);
+  const repl = {};
+  VALUED_POSITIONS.forEach(pos => {
+    const list = groups[pos] || [];
+    const idx = counts[pos];
+    repl[pos] = idx < list.length ? list[idx].points : 0;
+  });
+  return repl;
+}
+
 // ── NODE EXPORT (test-only; no-op in the browser) ─────────────────────────────
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { esc, parseCSV, parseCSVLine, parseLeagueTycoonCSV, scorePlayer };
+  module.exports = {
+    esc, parseCSV, parseCSVLine, parseLeagueTycoonCSV, scorePlayer,
+    computeStartableCounts, computeReplacementLevels,
+  };
 }

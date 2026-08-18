@@ -126,5 +126,58 @@ test('scorePlayer ignores stats with no scoring rule', () => {
   assert.ok(Math.abs(engine.scorePlayer(p, DYNASTY_CAP_SCORING) - 4) < 0.001); // 100*0.04
 });
 
+// ── computeStartableCounts / computeReplacementLevels ──
+function scoredPop(map) {
+  const out = [];
+  for (const pos in map) {
+    map[pos].forEach(pts => out.push({ position: pos, points: pts }));
+  }
+  return out;
+}
+
+test('computeStartableCounts multiplies base slots by team count', () => {
+  const counts = engine.computeStartableCounts(
+    scoredPop({ QB: [300, 290, 280] }), 2,
+    { QB: 1, RB: 0, WR: 0, TE: 0, FLEX: 0, SUPERFLEX: 0 },
+  );
+  assert.strictEqual(counts.QB, 2);
+});
+
+test('computeStartableCounts awards FLEX to the best leftover RB/WR/TE', () => {
+  // 1 team, RB base 1, WR base 1, FLEX 1. Base takes RB1(100)/WR1(90).
+  // Leftovers: RB2(80) vs WR2(70) -> FLEX goes to RB.
+  const counts = engine.computeStartableCounts(
+    scoredPop({ RB: [100, 80, 60], WR: [90, 70, 50] }), 1,
+    { QB: 0, RB: 1, WR: 1, TE: 0, FLEX: 1, SUPERFLEX: 0 },
+  );
+  assert.strictEqual(counts.RB, 2);
+  assert.strictEqual(counts.WR, 1);
+});
+
+test('computeStartableCounts awards SUPERFLEX to a QB when QB2 beats flex leftovers', () => {
+  const counts = engine.computeStartableCounts(
+    scoredPop({ QB: [400, 380], RB: [100, 80], WR: [90, 70] }), 1,
+    { QB: 1, RB: 1, WR: 1, TE: 0, FLEX: 0, SUPERFLEX: 1 },
+  );
+  assert.strictEqual(counts.QB, 2); // QB2 (380) beats RB2 (80)/WR2 (70)
+});
+
+test('computeReplacementLevels = points of the first non-startable player', () => {
+  // 2 teams, 1 QB each => startable QB = 2. Replacement = 3rd QB.
+  const repl = engine.computeReplacementLevels(
+    scoredPop({ QB: [300, 290, 280, 270] }), 2,
+    { QB: 1, RB: 0, WR: 0, TE: 0, FLEX: 0, SUPERFLEX: 0 },
+  );
+  assert.strictEqual(repl.QB, 280);
+});
+
+test('computeReplacementLevels is 0 when there are not enough players', () => {
+  const repl = engine.computeReplacementLevels(
+    scoredPop({ TE: [120] }), 2,
+    { QB: 0, RB: 0, WR: 0, TE: 1, FLEX: 0, SUPERFLEX: 0 },
+  );
+  assert.strictEqual(repl.TE, 0); // need a 3rd TE (index 2), none exists
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);
