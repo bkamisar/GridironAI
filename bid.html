@@ -218,20 +218,20 @@
       line.textContent = 'A $' + value + ' bid costs $' + impact + ' of cap room' +
         (capSlot !== 'none' ? ' (' + capSlot + ' discount applied)' : '') +
         ' — $' + after + ' left after.';
+      line.className = 'cap-line' + (after < 0 ? ' cap-over' : '');
     }
 
     // ── Search dropdown ─────────────────────────────────────────────────────
-    const available = valued.players.filter(p => {
-      const raw = players.find(pl => pl.id === p.id);
-      return raw && raw.isFreeAgent;
-    });
+    const available = valued.players.filter(p => p.isFreeAgent);
     const byValue = available.slice().sort((a, b) => dollarOf(b) - dollarOf(a));
 
     const searchEl = document.getElementById('bidSearch');
     const ddEl = document.getElementById('searchDD');
+    let currentHits = [];
     function closeDD() {
       ddEl.style.display = 'none';
       while (ddEl.firstChild) ddEl.removeChild(ddEl.firstChild);
+      currentHits = [];
     }
     searchEl.addEventListener('input', function () {
       const q = this.value.toLowerCase().trim();
@@ -239,6 +239,7 @@
       if (!q) return;
       const hits = byValue.filter(p => p.name.toLowerCase().indexOf(q) !== -1).slice(0, 12);
       if (!hits.length) return;
+      currentHits = hits;
       hits.forEach(p => {
         const item = document.createElement('div');
         item.className = 'dd-item';
@@ -260,6 +261,15 @@
       ddEl.style.display = '';
     });
     searchEl.addEventListener('blur', () => setTimeout(closeDD, 150));
+    searchEl.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && currentHits.length > 0) {
+        e.preventDefault();
+        const p = currentHits[0];
+        searchEl.value = p.name;
+        closeDD();
+        renderAdvice(p);
+      }
+    });
 
     // ── Top targets table ───────────────────────────────────────────────────
     const topBody = document.getElementById('topBody');
