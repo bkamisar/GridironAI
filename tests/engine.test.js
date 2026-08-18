@@ -285,5 +285,25 @@ test('applyCapImpact charges the full bid with no slot designation', () => {
   assert.strictEqual(engine.applyCapImpact(40, 'none', league), 40);
 });
 
+test('isCapLegal is true when a commitment fits under the cap', () => {
+  const league = { capPerTeam: 1000 };
+  assert.strictEqual(engine.isCapLegal(786, 200, league), true); // 986 <= 1000
+});
+
+test('isCapLegal is true at exactly the cap (equality is legal, not a violation)', () => {
+  const league = { capPerTeam: 1000 };
+  assert.strictEqual(engine.isCapLegal(786, 214, league), true); // 1000 <= 1000
+});
+
+test('isCapLegal is false when a commitment would exceed the cap', () => {
+  const league = { capPerTeam: 1000 };
+  assert.strictEqual(engine.isCapLegal(786, 215, league), false); // 1001 > 1000
+});
+
+test('isCapLegal handles a negative commitment (e.g. a trade sending salary away)', () => {
+  const league = { capPerTeam: 1000 };
+  assert.strictEqual(engine.isCapLegal(1050, -100, league), true); // 950 <= 1000
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);

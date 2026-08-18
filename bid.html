@@ -132,13 +132,17 @@
     function renderCapHeader() {
       const h = document.getElementById('capHeader');
       while (h.firstChild) h.removeChild(h.firstChild);
+      const legal = isCapLegal(cap.used, 0, LEAGUE);
       h.appendChild(capItem('Committed salary', '$' + cap.used));
-      h.appendChild(capItem('Cap remaining', '$' + cap.remaining, cap.remaining <= 0 ? 'cap-over' : ''));
-      if (cap.remaining <= 0) {
+      h.appendChild(capItem('Cap remaining', '$' + cap.remaining, legal ? '' : 'cap-over'));
+      if (!legal) {
         const w = document.createElement('div');
         w.className = 'warn-hard';
         w.style.marginTop = '0';
-        w.textContent = 'You are at or over your $' + LEAGUE.capPerTeam + ' cap.';
+        const strong = document.createElement('strong');
+        strong.textContent = 'ILLEGAL ROSTER — over your $' + LEAGUE.capPerTeam + ' cap by $' + Math.abs(cap.remaining) + '. ';
+        w.appendChild(strong);
+        w.appendChild(document.createTextNode('No cash trades in this league — you must cut salary to become legal.'));
         h.appendChild(w);
       }
     }
@@ -227,11 +231,25 @@
       const value = dollarOf(currentPlayer);
       const impact = Math.round(applyCapImpact(value, capSlot, LEAGUE));
       const after = cap.remaining - impact;
+      const legal = isCapLegal(cap.used, impact, LEAGUE);
       const line = document.getElementById('capImpactLine');
-      line.textContent = 'A $' + value + ' bid costs $' + impact + ' of cap room' +
-        (capSlot !== 'none' ? ' (' + capSlot + ' discount applied)' : '') +
-        ' — $' + after + ' left after.';
-      line.className = 'cap-line' + (after < 0 ? ' cap-over' : '');
+      while (line.firstChild) line.removeChild(line.firstChild);
+
+      if (!legal) {
+        line.className = 'warn-hard';
+        const strong = document.createElement('strong');
+        strong.textContent = 'ILLEGAL BID — over your cap by $' + Math.abs(after) + '. ';
+        line.appendChild(strong);
+        line.appendChild(document.createTextNode(
+          'This league has no cash trades to bail you out — you cannot roster this player at $' + value +
+          ' without cutting salary first.'
+        ));
+      } else {
+        line.className = 'cap-line';
+        line.textContent = 'A $' + value + ' bid costs $' + impact + ' of cap room' +
+          (capSlot !== 'none' ? ' (' + capSlot + ' discount applied)' : '') +
+          ' — $' + after + ' left after.';
+      }
     }
 
     // ── Search dropdown ─────────────────────────────────────────────────────

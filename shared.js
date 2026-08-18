@@ -237,6 +237,17 @@ function applyCapImpact(bidAmount, slot, league) {
   return bidAmount;
 }
 
+// This league has no cap-relief mechanism (no salary-only trades, unlike
+// Ottoneu) — going over the cap isn't a soft warning, it's an illegal
+// transaction. Reusable by any tool checking a hypothetical roster move
+// (a bid, a trade, an add/drop) against the hard cap: pass the team's
+// currently-committed salary and the net $ change the move would add
+// (negative for a move that frees up cap, e.g. sending salary away in a
+// trade). Equality (exactly at the cap) is legal.
+function isCapLegal(currentUsed, additionalCommitment, league) {
+  return currentUsed + additionalCommitment <= league.capPerTeam;
+}
+
 // ── LOCAL STORAGE ────────────────────────────────────────────────────────────
 function saveData(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
@@ -281,6 +292,6 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     esc, parseCSV, parseCSVLine, parseLeagueTycoonCSV, scorePlayer,
     computeStartableCounts, computeReplacementLevels, valuePlayers,
-    computeDollarValues, computeCapSituation, applyCapImpact,
+    computeDollarValues, computeCapSituation, applyCapImpact, isCapLegal,
   };
 }
