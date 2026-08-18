@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GridironAI — Bid Advisor</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    .cap-header { background: #fff; border-radius: 10px; padding: 14px 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); display: flex; gap: 28px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
+    .cap-item strong { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #999; margin-bottom: 3px; }
+    .cap-item span { font-size: 1.05rem; font-weight: 700; }
+    .cap-over { color: #c62828; }
+    .search-wrap { position: relative; max-width: 460px; margin-bottom: 8px; }
+    .bid-search { width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.92rem; }
+    .search-dd { position: absolute; left: 0; right: 0; top: 100%; background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.15); z-index: 20; max-height: 320px; overflow-y: auto; margin-top: 3px; }
+    .dd-item { padding: 8px 12px; font-size: 0.86rem; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid #f5f5f5; }
+    .dd-item:hover { background: #f0f4ff; }
+    .dd-val { color: #888; font-size: 0.8rem; white-space: nowrap; }
+    .advice { background: #fff; border-radius: 12px; padding: 22px 24px; box-shadow: 0 2px 10px rgba(0,0,0,0.12); margin-bottom: 24px; }
+    .advice-name { font-size: 1.15rem; font-weight: 700; margin-bottom: 12px; }
+    .rec-big { font-size: 2.4rem; font-weight: 800; color: #1a73e8; line-height: 1; }
+    .rec-lbl { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: #999; margin-bottom: 4px; }
+    .band-strip { display: flex; gap: 0; margin: 14px 0 16px; border-radius: 8px; overflow: hidden; font-size: 0.72rem; text-align: center; }
+    .band { padding: 6px 4px; color: #fff; font-weight: 600; flex: 1; }
+    .band small { display: block; font-weight: 400; opacity: 0.9; font-size: 0.68rem; }
+    .band-bargain { background: #1e7e34; }
+    .band-fair { background: #4a90d9; }
+    .band-stretch { background: #e6941c; }
+    .band-over { background: #c0552e; }
+    .ps-toggle { display: flex; gap: 8px; align-items: center; margin: 12px 0; font-size: 0.86rem; }
+    .ps-toggle button { padding: 5px 12px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.84rem; }
+    .ps-toggle button.active { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+    .cap-line { margin-top: 10px; padding: 10px 14px; background: #f8f8f8; border-radius: 8px; font-size: 0.86rem; }
+    .warn-hard { margin-top: 8px; padding: 9px 14px; background: #fce8e6; border-left: 4px solid #c62828; border-radius: 4px; font-size: 0.84rem; color: #c62828; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); font-size: 0.86rem; }
+    th { background: #1a73e8; color: #fff; padding: 9px 10px; text-align: right; font-weight: 600; }
+    th:first-child, th:nth-child(2) { text-align: left; }
+    td { padding: 7px 10px; text-align: right; border-bottom: 1px solid #f0f0f0; }
+    td:first-child, td:nth-child(2) { text-align: left; }
+    .tbl-wrap { overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>Bid Advisor</h1>
+  <nav class="nav">
+    <a href="index.html">Data Hub</a>
+    <a href="bid.html" class="active">Bid Advisor</a>
+  </nav>
+
+  <div id="error"></div>
+  <div id="content" style="display:none">
+    <div class="section-title">My Cap Situation</div>
+    <div class="cap-header" id="capHeader"></div>
+
+    <div class="section-title">Who's being nominated?</div>
+    <div class="search-wrap">
+      <input type="text" class="bid-search" id="bidSearch" placeholder="Search a player…" autocomplete="off">
+      <div class="search-dd" id="searchDD" style="display:none"></div>
+    </div>
+    <div id="adviceWrap"></div>
+
+    <div class="section-title">Top Remaining Targets</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Player</th><th>Pos</th><th>$ Value</th><th>VBD</th></tr></thead>
+        <tbody id="topBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="leagues.js"></script>
+  <script src="shared.js"></script>
+  <script>
+  (async function () {
+    await autoLoadFromRepo();
+
+    const errEl = document.getElementById('error');
+    const content = document.getElementById('content');
+    function showErr(msg, linkText, linkHref) {
+      const d = document.createElement('div');
+      d.className = 'error';
+      d.textContent = msg + (linkText ? ' ' : '');
+      if (linkText) {
+        const a = document.createElement('a');
+        a.href = linkHref;
+        a.textContent = linkText;
+        d.appendChild(a);
+      }
+      errEl.appendChild(d);
+    }
+
+    const LEAGUE = LEAGUES[0];
+    const players = loadData('gridiron_players');
+    const myTeam = loadData('gridiron_my_team') || '';
+    if (!players) { showErr('Missing data — upload the CSV on the', 'Data Hub.', 'index.html'); return; }
+    if (!myTeam) { showErr('Set your team on the', 'Data Hub.', 'index.html'); return; }
+
+    content.style.display = '';
+
+    const valued = valuePlayers(players, LEAGUE);
+    const dollars = computeDollarValues(valued, LEAGUE);
+    function dollarOf(p) { return dollars[p.id] || 1; }
+
+    const cap = computeCapSituation(players, myTeam, LEAGUE);
+
+    // ── Cap header ──────────────────────────────────────────────────────────
+    function capItem(label, value, cls) {
+      const item = document.createElement('div');
+      item.className = 'cap-item';
+      const strong = document.createElement('strong');
+      strong.textContent = label;
+      const span = document.createElement('span');
+      span.textContent = value;
+      if (cls) span.className = cls;
+      item.appendChild(strong);
+      item.appendChild(span);
+      return item;
+    }
+
+    function renderCapHeader() {
+      const h = document.getElementById('capHeader');
+      while (h.firstChild) h.removeChild(h.firstChild);
+      h.appendChild(capItem('Committed salary', '$' + cap.used));
+      h.appendChild(capItem('Cap remaining', '$' + cap.remaining, cap.remaining <= 0 ? 'cap-over' : ''));
+      if (cap.remaining <= 0) {
+        const w = document.createElement('div');
+        w.className = 'warn-hard';
+        w.style.marginTop = '0';
+        w.textContent = 'You are at or over your $' + LEAGUE.capPerTeam + ' cap.';
+        h.appendChild(w);
+      }
+    }
+    renderCapHeader();
+
+    // ── Advice card ─────────────────────────────────────────────────────────
+    let currentPlayer = null;
+    let capSlot = 'none'; // none | PS | IR
+
+    function bandDiv(cls, label, sub) {
+      const d = document.createElement('div');
+      d.className = 'band ' + cls;
+      d.appendChild(document.createTextNode(label));
+      const s = document.createElement('small');
+      s.textContent = sub;
+      d.appendChild(s);
+      return d;
+    }
+
+    function renderAdvice(p) {
+      currentPlayer = p;
+      capSlot = 'none';
+      const wrap = document.getElementById('adviceWrap');
+      while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+
+      const value = dollarOf(p);
+      const bargainCeil = Math.round(0.7 * value);
+      const stretchCeil = Math.round(1.15 * value);
+
+      const card = document.createElement('div');
+      card.className = 'advice';
+
+      const name = document.createElement('div');
+      name.className = 'advice-name';
+      name.textContent = p.name + ' (' + p.position + ', ' + p.nflTeam + ')';
+      card.appendChild(name);
+
+      const recLbl = document.createElement('div');
+      recLbl.className = 'rec-lbl';
+      recLbl.textContent = 'Suggested bid';
+      card.appendChild(recLbl);
+
+      const recBig = document.createElement('div');
+      recBig.className = 'rec-big';
+      recBig.textContent = '$' + value;
+      card.appendChild(recBig);
+
+      const strip = document.createElement('div');
+      strip.className = 'band-strip';
+      strip.appendChild(bandDiv('band-bargain', 'Bargain', '≤ $' + bargainCeil));
+      strip.appendChild(bandDiv('band-fair', 'Fair', '≤ $' + value));
+      strip.appendChild(bandDiv('band-stretch', 'Stretch', '≤ $' + stretchCeil));
+      strip.appendChild(bandDiv('band-over', 'Overpay', '> $' + stretchCeil));
+      card.appendChild(strip);
+
+      const toggle = document.createElement('div');
+      toggle.className = 'ps-toggle';
+      const toggleLabel = document.createElement('span');
+      toggleLabel.textContent = 'Cap impact if drafted to:';
+      toggle.appendChild(toggleLabel);
+      [['none', 'Active roster'], ['PS', 'Practice squad'], ['IR', 'IR']].forEach(([slot, label]) => {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.className = slot === 'none' ? 'active' : '';
+        btn.addEventListener('click', () => {
+          capSlot = slot;
+          toggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          renderCapImpact();
+        });
+        toggle.appendChild(btn);
+      });
+      card.appendChild(toggle);
+
+      const capLine = document.createElement('div');
+      capLine.className = 'cap-line';
+      capLine.id = 'capImpactLine';
+      card.appendChild(capLine);
+
+      wrap.appendChild(card);
+      renderCapImpact();
+    }
+
+    function renderCapImpact() {
+      if (!currentPlayer) return;
+      const value = dollarOf(currentPlayer);
+      const impact = Math.round(applyCapImpact(value, capSlot, LEAGUE));
+      const after = cap.remaining - impact;
+      const line = document.getElementById('capImpactLine');
+      line.textContent = 'A $' + value + ' bid costs $' + impact + ' of cap room' +
+        (capSlot !== 'none' ? ' (' + capSlot + ' discount applied)' : '') +
+        ' — $' + after + ' left after.';
+    }
+
+    // ── Search dropdown ─────────────────────────────────────────────────────
+    const available = valued.players.filter(p => {
+      const raw = players.find(pl => pl.id === p.id);
+      return raw && raw.isFreeAgent;
+    });
+    const byValue = available.slice().sort((a, b) => dollarOf(b) - dollarOf(a));
+
+    const searchEl = document.getElementById('bidSearch');
+    const ddEl = document.getElementById('searchDD');
+    function closeDD() {
+      ddEl.style.display = 'none';
+      while (ddEl.firstChild) ddEl.removeChild(ddEl.firstChild);
+    }
+    searchEl.addEventListener('input', function () {
+      const q = this.value.toLowerCase().trim();
+      closeDD();
+      if (!q) return;
+      const hits = byValue.filter(p => p.name.toLowerCase().indexOf(q) !== -1).slice(0, 12);
+      if (!hits.length) return;
+      hits.forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'dd-item';
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = p.name + ' (' + p.position + ')';
+        const valSpan = document.createElement('span');
+        valSpan.className = 'dd-val';
+        valSpan.textContent = '$' + dollarOf(p);
+        item.appendChild(nameSpan);
+        item.appendChild(valSpan);
+        item.addEventListener('mousedown', e => {
+          e.preventDefault();
+          searchEl.value = p.name;
+          closeDD();
+          renderAdvice(p);
+        });
+        ddEl.appendChild(item);
+      });
+      ddEl.style.display = '';
+    });
+    searchEl.addEventListener('blur', () => setTimeout(closeDD, 150));
+
+    // ── Top targets table ───────────────────────────────────────────────────
+    const topBody = document.getElementById('topBody');
+    byValue.slice(0, 30).forEach(p => {
+      const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      [p.name, p.position, '$' + dollarOf(p), p.vbd.toFixed(1)].forEach(text => {
+        const td = document.createElement('td');
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+      tr.addEventListener('click', () => { searchEl.value = p.name; renderAdvice(p); });
+      topBody.appendChild(tr);
+    });
+  })();
+  </script>
+</body>
+</html>
