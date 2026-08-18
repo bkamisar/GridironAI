@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GridironAI — Data Hub</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; margin-bottom: 12px; }
+    .badge.loaded { background: #e6f4ea; color: #1e7e34; }
+    .badge.missing { background: #fce8e6; color: #c62828; }
+    .card label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 6px; }
+    .card input[type=file] { width: 100%; font-size: 0.85rem; }
+    .meta { font-size: 0.78rem; color: #888; margin-top: 6px; min-height: 18px; }
+    .team-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .team-row select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>GridironAI</h1>
+  <p class="subtitle">Upload your League Tycoon export once — the Bid Advisor uses it automatically.</p>
+
+  <nav class="nav">
+    <a href="index.html" class="active">Data Hub</a>
+    <a href="bid.html">Bid Advisor</a>
+  </nav>
+
+  <div id="repoLoading" style="display:none;color:#666;font-size:.88rem;padding:4px 0 12px">Loading league data from repo…</div>
+
+  <div class="section-title">My Team</div>
+  <div class="team-row">
+    <label for="teamSelect" style="font-size:0.9rem">Your team:</label>
+    <select id="teamSelect"><option value="">— load the players CSV first —</option></select>
+  </div>
+
+  <div class="section-title">Data File</div>
+  <div class="grid" id="csvGrid"></div>
+
+  <script src="leagues.js"></script>
+  <script src="shared.js"></script>
+  <script>
+    function buildGrid() {
+      const grid = document.getElementById('csvGrid');
+      while (grid.firstChild) grid.removeChild(grid.firstChild);
+      const stored = loadData('gridiron_players');
+      const count = stored ? stored.length : 0;
+      const card = document.createElement('div');
+      card.className = 'card';
+      const h2 = document.createElement('h2');
+      h2.textContent = 'League Tycoon Players Export';
+      const badge = document.createElement('span');
+      badge.className = 'badge ' + (stored ? 'loaded' : 'missing');
+      badge.textContent = stored ? '✓ ' + count + ' players' : 'Required';
+      const label = document.createElement('label');
+      label.textContent = 'Upload CSV:';
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.csv';
+      input.addEventListener('change', handleFile);
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = loadData('gridiron_players_ts') ? new Date(loadData('gridiron_players_ts')).toLocaleString() : 'Not loaded';
+      card.appendChild(h2);
+      card.appendChild(badge);
+      card.appendChild(label);
+      card.appendChild(input);
+      card.appendChild(meta);
+      grid.appendChild(card);
+    }
+
+    function handleFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        const parsed = parseLeagueTycoonCSV(e.target.result);
+        saveData('gridiron_players', parsed);
+        saveData('gridiron_players_ts', Date.now());
+        buildGrid();
+        rebuildTeamDropdown(parsed);
+      };
+      reader.readAsText(file);
+    }
+
+    function rebuildTeamDropdown(players) {
+      const teams = Array.from(new Set(players.filter(p => !p.isFreeAgent).map(p => p.team))).sort();
+      const sel = document.getElementById('teamSelect');
+      const saved = loadData('gridiron_my_team') || '';
+      while (sel.firstChild) sel.removeChild(sel.firstChild);
+      const def = document.createElement('option');
+      def.value = '';
+      def.textContent = '— select your team —';
+      sel.appendChild(def);
+      teams.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t; // textContent — never innerHTML — since team names come from the CSV
+        if (t === saved) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+
+    document.getElementById('teamSelect').addEventListener('change', function () {
+      saveData('gridiron_my_team', this.value);
+    });
+
+    (async function () {
+      document.getElementById('repoLoading').style.display = '';
+      await autoLoadFromRepo();
+      document.getElementById('repoLoading').style.display = 'none';
+      buildGrid();
+      const savedPlayers = loadData('gridiron_players');
+      if (savedPlayers) rebuildTeamDropdown(savedPlayers);
+    })();
+  </script>
+</body>
+</html>
