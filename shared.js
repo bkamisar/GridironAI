@@ -237,6 +237,45 @@ function applyCapImpact(bidAmount, slot, league) {
   return bidAmount;
 }
 
+// ── LOCAL STORAGE ────────────────────────────────────────────────────────────
+function saveData(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function loadData(key) {
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { console.warn('loadData: bad JSON for key', key); return null; }
+}
+
+// ── REPO AUTO-LOAD ───────────────────────────────────────────────────────────
+// Fetches data/<file> and parses+stores it under `key`. Skips entirely when
+// opened via file:// (no fetch of local files across origins) — the Data Hub's
+// manual upload covers local testing, matching the OttoneuAI convention.
+const REPO_FILES = [
+  { file: 'leaguetycoon_players_contracts_2026.csv', key: 'gridiron_players', parse: parseLeagueTycoonCSV },
+];
+
+async function autoLoadFromRepo() {
+  if (window.location.protocol === 'file:') return {};
+  const status = {};
+  await Promise.all(REPO_FILES.map(async ({ file, key, parse }) => {
+    try {
+      const res = await fetch('./data/' + file);
+      if (!res.ok) { console.warn('[autoLoad] 404:', file); status[file] = false; return; }
+      const text = await res.text();
+      const parsed = parse(text);
+      saveData(key, parsed);
+      saveData(key + '_ts', Date.now());
+      status[file] = true;
+    } catch (e) {
+      console.error('[autoLoad] ERROR:', file, e);
+      status[file] = false;
+    }
+  }));
+  return status;
+}
+
 // ── NODE EXPORT (test-only; no-op in the browser) ─────────────────────────────
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
