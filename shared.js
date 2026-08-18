@@ -197,11 +197,22 @@ function computeDollarValues(valuedResult, league) {
   const benchSlots = league.rosterSlots.BENCH || 0;
   const populationSize = (startingSlots + benchSlots) * teams;
 
-  const population = valuedResult.players.slice(0, populationSize);
+  // Defensive: don't trust caller ordering (valuePlayers already sorts by vbd
+  // desc, but a future caller could re-sort valuedResult.players in place,
+  // e.g. bid.html sorting for alphabetical display).
+  const sorted = valuedResult.players.slice().sort((a, b) => b.vbd - a.vbd);
+  const population = sorted.slice(0, populationSize);
   const totalPositiveVBD = population.reduce((s, p) => s + Math.max(0, p.vbd), 0);
   const floorReserve = population.length * 1;
+  // Assumes population floors ($1 each) fit within the pool, true for any
+  // plausibly-sized league (this one: 180 floors vs a $10,000 pool). A
+  // misconfigured tiny league could have floor obligations exceed the pool —
+  // not guarded against, not expected to occur in practice.
   const distributionPool = Math.max(0, pool - kDstReserve - floorReserve);
 
+  // Independent per-player rounding means sum(dollars) + kDstReserve can drift
+  // slightly from `pool` (confirmed ~0.03% on real data) — acceptable for v1's
+  // advisory bid suggestions; not treated as a hard constraint to reconcile.
   const dollars = {};
   population.forEach(p => {
     const share = totalPositiveVBD > 0 ? Math.max(0, p.vbd) / totalPositiveVBD : 0;
