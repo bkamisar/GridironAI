@@ -90,5 +90,41 @@ test('parseLeagueTycoonCSV omits stat keys with no value rather than defaulting 
   assert.strictEqual('rec' in allen.stats, false); // Allen has no receiving stats
 });
 
+// ── scorePlayer ──
+// This league's scoring, matching the approved design spec exactly.
+const DYNASTY_CAP_SCORING = {
+  passYd: 0.04, passTD: 6, int: -4, passTwoPt: 2,
+  rushYd: 0.1, rushTD: 6, rushTwoPt: 2,
+  recYd: 0.1, recTD: 6, recTwoPt: 2,
+  fumLost: -2,
+  recByPosition: { RB: 0.5, WR: 1.0, TE: 1.5 },
+};
+
+test('scorePlayer scores a QB from raw passing stats', () => {
+  // Josh Allen: 3684.14 passYd, 27.76 passTD, 11.06 int
+  // 3684.14*0.04 + 27.76*6 - 11.06*4 = 147.3656 + 166.56 - 44.24 = 269.6856
+  const allen = { position: 'QB', stats: { passYd: 3684.14, passTD: 27.76, int: 11.06 } };
+  assert.ok(Math.abs(engine.scorePlayer(allen, DYNASTY_CAP_SCORING) - 269.6856) < 0.001);
+});
+
+test('scorePlayer applies the WR reception weight (1.0)', () => {
+  // Ja'Marr Chase: 121.01 rec, 1431.99 recYd, 10.91 recTD, 18.48 rushYd, 0.05 rushTD
+  // 121.01*1.0 + 1431.99*0.1 + 10.91*6 + 18.48*0.1 + 0.05*6 = 331.817
+  const chase = { position: 'WR', stats: { rec: 121.01, recYd: 1431.99, recTD: 10.91, rushYd: 18.48, rushTD: 0.05 } };
+  assert.ok(Math.abs(engine.scorePlayer(chase, DYNASTY_CAP_SCORING) - 331.817) < 0.001);
+});
+
+test('scorePlayer applies the RB reception weight (0.5), lower than WR for the same catch total', () => {
+  // Jahmyr Gibbs: 68.16 rec, 519.86 recYd, 3.91 recTD, 1272.77 rushYd, 13.74 rushTD
+  // 68.16*0.5 + 519.86*0.1 + 3.91*6 + 1272.77*0.1 + 13.74*6 = 319.243
+  const gibbs = { position: 'RB', stats: { rec: 68.16, recYd: 519.86, recTD: 3.91, rushYd: 1272.77, rushTD: 13.74 } };
+  assert.ok(Math.abs(engine.scorePlayer(gibbs, DYNASTY_CAP_SCORING) - 319.243) < 0.001);
+});
+
+test('scorePlayer ignores stats with no scoring rule', () => {
+  const p = { position: 'QB', stats: { passYd: 100, someUnknownStat: 999 } };
+  assert.ok(Math.abs(engine.scorePlayer(p, DYNASTY_CAP_SCORING) - 4) < 0.001); // 100*0.04
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);

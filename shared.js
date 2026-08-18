@@ -88,7 +88,26 @@ function parseLeagueTycoonCSV(text) {
   });
 }
 
+// ── SCORING ──────────────────────────────────────────────────────────────────
+// Fantasy points = sum over stats of stat_value * weight. `rec` is
+// position-conditional (scoring.recByPosition) since this league values
+// receptions differently by position; every other stat is a flat weight.
+function scorePlayer(player, scoring) {
+  let total = 0;
+  for (const stat in player.stats) {
+    const value = player.stats[stat];
+    if (stat === 'rec' && scoring.recByPosition) {
+      const w = scoring.recByPosition[player.position];
+      if (w !== undefined) total += value * w;
+      continue;
+    }
+    const weight = scoring[stat];
+    if (weight !== undefined) total += value * weight;
+  }
+  return total;
+}
+
 // ── NODE EXPORT (test-only; no-op in the browser) ─────────────────────────────
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { esc, parseCSV, parseCSVLine, parseLeagueTycoonCSV };
+  module.exports = { esc, parseCSV, parseCSVLine, parseLeagueTycoonCSV, scorePlayer };
 }
