@@ -61,6 +61,9 @@ const LT_STAT_COLS = {
   'PASS YD': 'passYd', 'PASS TD': 'passTD', 'PASS INT': 'int',
 };
 
+// NOTE: `id` (name-nflTeam-rowIndex) is stable only within a single parse call —
+// it is NOT stable across re-imports (row order changes between League Tycoon
+// exports). Do not persist `id` across page loads/sessions without addressing this.
 function parseLeagueTycoonCSV(text) {
   const rows = parseCSV(text);
   return rows.map((row, i) => {
