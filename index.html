@@ -44,6 +44,7 @@
       while (grid.firstChild) grid.removeChild(grid.firstChild);
       const stored = loadData('gridiron_players');
       const count = stored ? stored.length : 0;
+      const ts = loadData('gridiron_players_ts');
       const card = document.createElement('div');
       card.className = 'card';
       const h2 = document.createElement('h2');
@@ -59,7 +60,7 @@
       input.addEventListener('change', handleFile);
       const meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = loadData('gridiron_players_ts') ? new Date(loadData('gridiron_players_ts')).toLocaleString() : 'Not loaded';
+      meta.textContent = ts ? new Date(ts).toLocaleString() : 'Not loaded';
       card.appendChild(h2);
       card.appendChild(badge);
       card.appendChild(label);
@@ -74,10 +75,17 @@
       const reader = new FileReader();
       reader.onload = e => {
         const parsed = parseLeagueTycoonCSV(e.target.result);
+        if (!parsed.some(p => p.name)) {
+          alert('This doesn\'t look like a League Tycoon players export — no player names found. Check you selected the right file.');
+          return;
+        }
         saveData('gridiron_players', parsed);
         saveData('gridiron_players_ts', Date.now());
         buildGrid();
         rebuildTeamDropdown(parsed);
+      };
+      reader.onerror = () => {
+        alert('Could not read that file. Please try again.');
       };
       reader.readAsText(file);
     }
