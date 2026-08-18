@@ -51,7 +51,41 @@ function parseCSV(text) {
     });
 }
 
+// ── LEAGUE TYCOON PARSER ──────────────────────────────────────────────────────
+// Maps the raw export's headers to our internal stat keys. Missing/blank cells
+// are omitted from `stats` (not defaulted to 0) so scorePlayer only sums stats
+// the export actually provided.
+const LT_STAT_COLS = {
+  'RUSH YD': 'rushYd', 'RUSH TD': 'rushTD',
+  'REC': 'rec', 'REC YD': 'recYd', 'REC TD': 'recTD',
+  'PASS YD': 'passYd', 'PASS TD': 'passTD', 'PASS INT': 'int',
+};
+
+function parseLeagueTycoonCSV(text) {
+  const rows = parseCSV(text);
+  return rows.map((row, i) => {
+    const positions = (row['Position'] || '').split(',').map(s => s.trim()).filter(Boolean);
+    const team = row['Team'] || 'FA';
+    const stats = {};
+    for (const col in LT_STAT_COLS) {
+      const raw = row[col];
+      if (raw !== '' && raw != null) stats[LT_STAT_COLS[col]] = Number(raw);
+    }
+    return {
+      id: (row['Player'] || '') + '-' + (row['NFL Team'] || '') + '-' + i,
+      name: row['Player'] || '',
+      position: positions[0] || '',
+      nflTeam: row['NFL Team'] || '',
+      team: team,
+      isFreeAgent: team === 'FA',
+      salary: row['Real Salary'] !== '' && row['Real Salary'] != null ? Number(row['Real Salary']) : null,
+      years: row['Years'] !== '' && row['Years'] != null ? Number(row['Years']) : null,
+      stats: stats,
+    };
+  });
+}
+
 // ── NODE EXPORT (test-only; no-op in the browser) ─────────────────────────────
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { esc, parseCSV, parseCSVLine };
+  module.exports = { esc, parseCSV, parseCSVLine, parseLeagueTycoonCSV };
 }
