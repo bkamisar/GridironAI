@@ -1,6 +1,6 @@
 # GridironAI — Bid Advisor v1 Design
 
-Status: approved, pending League Tycoon sample export
+Status: approved, pending League Tycoon salary/cap export
 Date: 2026-08-17
 
 ## Purpose
@@ -10,10 +10,12 @@ the OttoneuAI suite's approach (static HTML/JS, no backend, `shared.js`
 valuation engine, `data/` CSVs auto-loaded on page load, deployed to GitHub
 Pages so it's usable from any device). It will eventually cover all of the
 user's leagues (this $1000-cap dynasty league first, then the superflex
-league and redraft snake leagues), sharing one set of player projections
-(Mike Clay's ESPN Draft Kit PDF, already converted to CSV in the
-`Fantasy Football tools` repo at `data/clay_2026_offense.csv`) across
-per-league scoring/roster configs.
+league and redraft snake leagues), sharing player projections across
+per-league scoring/roster configs. For this league, the projection +
+ownership source is a League Tycoon export (see Data sources below) rather
+than the Clay PDF/CSV used by the separate React draft-assistant app —
+future leagues may draw from either source depending on what each
+platform provides.
 
 v1's concrete deliverable: a **Bid Advisor** tool for one specific league's
 ongoing offseason slow (nominate-and-bid) auction draft, giving the user a
@@ -23,8 +25,10 @@ suggested dollar value for any nominated player in real time.
 
 - $1000 salary cap per team, 10 teams ($10,000 total pool), dynasty (keep-forever)
 - Starting lineup: 1 QB, 2 RB, 2 WR, TE, FLEX, SUPERFLEX, DST, K
-- Bench: 10 spots, plus a practice squad for rookies who have never appeared in an NFL game
+- Bench: 10 spots, plus a 10-slot practice squad for rookies who have never
+  appeared in an NFL game (most managers don't fill all 10), plus 2 IR slots
 - **Practice squad cap treatment**: a PS player's salary counts at **25%** against the $1000 cap (not the full bid amount)
+- **IR cap treatment**: an IR player's salary counts at **50%** against the $1000 cap
 - Draft mechanic: nominate a player, timed bidding window, highest bid wins
 - Draft is already in progress — some rosters/salaries are already committed (League Tycoon platform)
 - Undrafted rookies (from an earlier separate rookie draft) are in this same auction pool alongside veterans
@@ -39,6 +43,13 @@ suggested dollar value for any nominated player in real time.
 | Receptions | **position-conditional**: RB 0.5, WR 1.0, TE 1.5 |
 | Fumbles lost | -2 |
 | K / DST | **not statistically valued in v1** (see Scope) — each gets a flat $1/roster spot reserved off the pool instead |
+
+**Known data gap**: neither available data source (Clay CSV or the League
+Tycoon players export, see Data sources below) projects fumbles-lost or
+2pt-conversion rates per player. Both contribute 0 to v1 scoring. Real
+impact is small for the large majority of players; call out in `MODEL.md`
+as a known simplification, not a bug, if a valuation looks slightly off
+for high-fumble/goal-line-vulture types.
 
 ## Architecture
 
@@ -55,10 +66,37 @@ GridironAI/
   theme.css
   MODEL.md              # math reference + invariants, written once engine is implemented
   data/
-    clay_2026_offense.csv   # copied from Fantasy Football tools repo (shared across leagues)
-    <league>_rosters.csv    # League Tycoon export: team, player, position, salary, slot
+    leaguetycoon_players_2026.csv  # League Tycoon player pool: ownership (team/FA) + raw stat projections
+    <league>_salaries.csv          # League Tycoon salary/cap export (pending — see Open items)
   README.md              # data/ file conventions, update instructions (mirrors OttoneuAI's)
 ```
+
+### Data sources
+
+Two files feed v1, both from League Tycoon (not the Clay PDF/CSV — see
+below):
+
+1. **`leaguetycoon_players_2026.csv`** (already obtained, committed to
+   `data/`). One row per player league-wide (2,208 rows): fantasy team name
+   or `FA`, name, position, NFL team, League Tycoon's own `VAL`/`ADP`/
+   `PROJ FPTS` (informational only — see below), and raw per-game-projected
+   stats (rush/rec/pass yards, TDs, INTs, etc.). This is what tells us
+   which players are already rostered (excluded from bid targets) vs. free
+   agents (biddable), and supplies the raw stats to score.
+   - **Do not trust `PROJ FPTS` directly** — it reflects League Tycoon's own
+     scoring assumptions, not necessarily this league's exact custom rules.
+     v1 recomputes fantasy points from the raw stat columns using this
+     league's scoring config, and only uses `PROJ FPTS`/`VAL` as an
+     informal sanity-check cross-reference.
+   - Supersedes the Clay CSV (`Fantasy Football tools/data/clay_2026_offense.csv`)
+     for this league: broader coverage (includes ownership status and a
+     much larger player pool, e.g. deep rookies), so Clay's CSV is not
+     used as a v1 data source here. (Clay remains the projections source
+     for the separate React draft-assistant app; unrelated to this repo.)
+2. **`<league>_salaries.csv`** (pending — user pulling a sample). Per
+   rostered player: team, salary paid, and slot designation (starter /
+   bench / PS / IR). Required for cap-room tracking; blocks the import
+   component (see League Tycoon import section).
 
 ### Multi-league data model
 
@@ -70,8 +108,9 @@ Each league is a config object in `leagues.js`:
   name: '...',
   teams: 10,
   capPerTeam: 1000,
-  rosterSlots: { QB:1, RB:2, WR:2, TE:1, FLEX:1, SUPERFLEX:1, K:1, DST:1, BENCH:10, PS: null /* TBD, see Open item */ },
+  rosterSlots: { QB:1, RB:2, WR:2, TE:1, FLEX:1, SUPERFLEX:1, K:1, DST:1, BENCH:10, PS:10, IR:2 },
   psCapDiscount: 0.25,
+  irCapDiscount: 0.50,
   scoring: { passYd: 0.04, passTD: 6, int: -4, twoPt: 2, rushYd: 0.1, rushTD: 6,
              recYd: 0.1, recTD: 6, fumLost: -2,
              recByPosition: { RB: 0.5, WR: 1.0, TE: 1.5 } },
@@ -103,9 +142,10 @@ support:
      pool, since real bids on K/DST happen even though we don't project
      their points. This keeps QB/RB/WR/TE dollars from being inflated by
      pretending nobody spends on kickers/defense.
-4. **Practice squad cap-impact preview** — a PS toggle on a bid target
-   shows cap impact as `bid × 0.25` rather than the full bid amount, per
-   the league's PS discount rule.
+4. **PS/IR cap-impact preview** — a toggle on a bid target (none / PS / IR)
+   shows cap impact as `bid × 1.0`, `bid × 0.25`, or `bid × 0.50`
+   respectively, per the league's discount rules. This only affects the
+   cap-room preview, never the player's underlying $ value.
 
 K and DST players are excluded from the VBD/$ valuation entirely in v1 —
 they won't appear with a computed suggested-bid value. Each gets a flat
@@ -115,21 +155,25 @@ $1-per-spot line in the cap-math reserve only.
 
 Modeled directly on OttoneuAI's `bid.html`:
 
-- **Cap situation header**: spent, remaining, PS-adjusted remaining.
+- **Cap situation header**: spent, remaining, PS/IR-adjusted remaining.
 - **Search box**: type the player being nominated → advice card with
   suggested bid, bargain/fair/stretch/over bands relative to remaining cap
-  and roster needs, and a PS-toggle to preview discounted cap impact.
+  and roster needs, and a none/PS/IR toggle to preview discounted cap impact.
 - **Top targets table**: best remaining $ values among not-yet-rostered
   players, filterable by position.
 
 ## League Tycoon import
 
-Blocked on a sample export/API response (user to provide). Needs, at
-minimum, per rostered player: team, name, position, salary, and
-slot designation (starter / bench / practice squad) — used to compute each
-team's remaining cap and to exclude already-rostered players from the
-"available to bid on" pool. Importer will be built against the real export
-shape once received; exact parsing logic is not finalized in this spec.
+Two data needs, one resolved:
+
+- **Ownership (which players are rostered vs. free agent)** — resolved via
+  `leaguetycoon_players_2026.csv`'s `Team`/`FA` column (see Data sources).
+- **Salary/cap data** — still blocked on a sample export (user pulling it).
+  Needs, at minimum, per rostered player: team, salary paid, and slot
+  designation (starter / bench / PS / IR) — used to compute each team's
+  remaining cap (with the PS/IR discounts applied). Importer will be built
+  against the real export shape once received; exact parsing/column
+  mapping is not finalized in this spec.
 
 ## Testing
 
@@ -144,8 +188,8 @@ before relying on it live during the draft.
 
 **In v1:**
 - This one dynasty league's $ valuations for QB/RB/WR/TE (offense only)
-- Rookies included, assuming Clay's projections cover them (to be verified
-  once player names are cross-checked against the League Tycoon export)
+- Rookies included — `leaguetycoon_players_2026.csv` already covers them
+  (confirmed: undrafted rookies appear with `FA` ownership and projected stats)
 - Bid Advisor tool + Data Hub (CSV/import loading, cap overview)
 - Single-year (this-season) points → dollars; **not** a multi-year
   dynasty horizon model (no Ottoneu-style Y0+0.90×Y1+0.81×Y2 blend in v1)
@@ -163,10 +207,8 @@ before relying on it live during the draft.
 
 ## Open items
 
-- League Tycoon roster/salary export sample — needed before the import
-  component can be built or planned in detail.
-- Exact practice squad slot count per team — needed to finalize the
-  `rosterSlots.PS` value in `leagues.js`. Doesn't block engine/Bid Advisor
-  work (PS cap-impact is computed per-player via the toggle, not from the
-  slot count), but should be filled in before the Data Hub's roster
-  overview is built.
+- League Tycoon salary/cap export sample — needed before the salary-import
+  component can be built or planned in detail. Doesn't block engine or
+  Bid Advisor UI work, which can proceed against the player pool data
+  already in hand; it blocks only the "my cap situation" / already-spent
+  tracking piece.
