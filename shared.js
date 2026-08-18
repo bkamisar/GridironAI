@@ -178,10 +178,43 @@ function valuePlayers(players, league) {
   return { players: scored, replacement: replacement, startable: startable };
 }
 
+// ── DOLLAR CONVERSION ──────────────────────────────────────────────────────
+// VBD -> $, Ottoneu-style: $1 floor per player in the "will be paid for"
+// population (starting slots + bench, leaguewide — PS/IR excluded since most
+// managers don't fill them), remainder distributed by share of positive VBD
+// within that same population. K/DST get a flat reserve held off the top
+// instead of individual values (v1 doesn't statistically value them).
+function computeDollarValues(valuedResult, league) {
+  const teams = league.teams;
+  const pool = teams * league.capPerTeam;
+
+  const kDstSlots = (league.rosterSlots.K || 0) + (league.rosterSlots.DST || 0);
+  const kDstReserve = (league.kDstFlatReserve || 0) * kDstSlots * teams;
+
+  const startingSlots = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'SUPERFLEX'].reduce(
+    (s, k) => s + (league.rosterSlots[k] || 0), 0,
+  );
+  const benchSlots = league.rosterSlots.BENCH || 0;
+  const populationSize = (startingSlots + benchSlots) * teams;
+
+  const population = valuedResult.players.slice(0, populationSize);
+  const totalPositiveVBD = population.reduce((s, p) => s + Math.max(0, p.vbd), 0);
+  const floorReserve = population.length * 1;
+  const distributionPool = Math.max(0, pool - kDstReserve - floorReserve);
+
+  const dollars = {};
+  population.forEach(p => {
+    const share = totalPositiveVBD > 0 ? Math.max(0, p.vbd) / totalPositiveVBD : 0;
+    dollars[p.id] = Math.max(1, Math.round(1 + share * distributionPool));
+  });
+  return dollars;
+}
+
 // ── NODE EXPORT (test-only; no-op in the browser) ─────────────────────────────
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     esc, parseCSV, parseCSVLine, parseLeagueTycoonCSV, scorePlayer,
     computeStartableCounts, computeReplacementLevels, valuePlayers,
+    computeDollarValues,
   };
 }

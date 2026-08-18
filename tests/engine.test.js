@@ -215,5 +215,46 @@ test('valuePlayers excludes K/DST from the valued population', () => {
   assert.strictEqual(result.players[0].id, 'qb1');
 });
 
+// ── computeDollarValues ──
+test('computeDollarValues conserves the pool: sum of dollars + K/DST reserve = total pool', () => {
+  // Tiny league: 2 teams, 1 QB starter + 1 bench slot each, no FLEX/SUPERFLEX, no K/DST.
+  // Pool = 2*100 = 200. kDstReserve = 0. populationSize = (1+1)*2 = 4.
+  const players = [
+    { id: 'q1', position: 'QB', stats: { passYd: 5000 } }, // 200
+    { id: 'q2', position: 'QB', stats: { passYd: 4000 } }, // 160
+    { id: 'q3', position: 'QB', stats: { passYd: 3000 } }, // 120 (replacement, startable=2 -> repl=idx2=120)
+    { id: 'q4', position: 'QB', stats: { passYd: 1000 } }, // 40  (below replacement)
+    { id: 'q5', position: 'QB', stats: { passYd: 500 } },  // 20  (below replacement, outside population)
+  ];
+  const league = {
+    teams: 2, capPerTeam: 100,
+    rosterSlots: { QB: 1, RB: 0, WR: 0, TE: 0, FLEX: 0, SUPERFLEX: 0, K: 0, DST: 0, BENCH: 1 },
+    scoring: { passYd: 0.04 },
+    kDstFlatReserve: 1,
+  };
+  const valued = engine.valuePlayers(players, league);
+  const dollars = engine.computeDollarValues(valued, league);
+  const total = Object.keys(dollars).reduce((s, id) => s + dollars[id], 0);
+  assert.ok(total <= 200); // never exceeds the pool
+  assert.strictEqual(dollars['q1'] > dollars['q2'], true); // higher VBD -> higher $
+  assert.strictEqual('q5' in dollars, false); // outside the 4-player population
+});
+
+test('computeDollarValues gives every valued player at least the $1 floor', () => {
+  const players = [
+    { id: 'q1', position: 'QB', stats: { passYd: 5000 } },
+    { id: 'q2', position: 'QB', stats: { passYd: 100 } }, // far below replacement
+  ];
+  const league = {
+    teams: 1, capPerTeam: 1000,
+    rosterSlots: { QB: 1, RB: 0, WR: 0, TE: 0, FLEX: 0, SUPERFLEX: 0, K: 0, DST: 0, BENCH: 1 },
+    scoring: { passYd: 0.04 },
+    kDstFlatReserve: 1,
+  };
+  const valued = engine.valuePlayers(players, league);
+  const dollars = engine.computeDollarValues(valued, league);
+  assert.strictEqual(dollars['q2'], 1);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);
