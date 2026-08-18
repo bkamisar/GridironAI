@@ -40,6 +40,10 @@ test('parseCSV handles quoted commas inside a field', () => {
   assert.strictEqual(rows[0]['Name'], 'Hunter, Travis');
   assert.strictEqual(rows[0]['Position'], 'WR,CB');
 });
+test('parseCSV correctly decodes a field whose content is itself quote-bounded', () => {
+  const rows = engine.parseCSV('Name,Nick\nBob,"""Ace"""');
+  assert.strictEqual(rows[0]['Nick'], '"Ace"');
+});
 
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);

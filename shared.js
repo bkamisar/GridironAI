@@ -40,13 +40,13 @@ function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
   const delim = lines[0].includes('\t') ? '\t' : ',';
-  const headers = parseCSVLine(lines[0], delim).map(h => h.trim().replace(/^"|"$/g, ''));
+  const headers = parseCSVLine(lines[0], delim).map(h => h.trim());
   return lines.slice(1)
     .filter(l => l.trim())
     .map(line => {
       const values = parseCSVLine(line, delim);
       const obj = {};
-      headers.forEach((h, i) => { obj[h] = (values[i] || '').trim().replace(/^"|"$/g, ''); });
+      headers.forEach((h, i) => { obj[h] = (values[i] || '').trim(); });
       return obj;
     });
 }
