@@ -256,5 +256,34 @@ test('computeDollarValues gives every valued player at least the $1 floor', () =
   assert.strictEqual(dollars['q2'], 1);
 });
 
+// ── computeCapSituation / applyCapImpact ──
+test('computeCapSituation sums a team\'s salary and computes remaining cap', () => {
+  const rows = [
+    { team: 'Team 10', salary: 232 },
+    { team: 'Team 10', salary: 148 },
+    { team: 'FA', salary: null },
+    { team: 'Other Team', salary: 500 },
+  ];
+  const league = { capPerTeam: 1000 };
+  const cap = engine.computeCapSituation(rows, 'Team 10', league);
+  assert.strictEqual(cap.used, 380);
+  assert.strictEqual(cap.remaining, 620);
+});
+
+test('applyCapImpact applies the PS discount (25%)', () => {
+  const league = { psCapDiscount: 0.25, irCapDiscount: 0.50 };
+  assert.strictEqual(engine.applyCapImpact(40, 'PS', league), 10);
+});
+
+test('applyCapImpact applies the IR discount (50%)', () => {
+  const league = { psCapDiscount: 0.25, irCapDiscount: 0.50 };
+  assert.strictEqual(engine.applyCapImpact(40, 'IR', league), 20);
+});
+
+test('applyCapImpact charges the full bid with no slot designation', () => {
+  const league = { psCapDiscount: 0.25, irCapDiscount: 0.50 };
+  assert.strictEqual(engine.applyCapImpact(40, 'none', league), 40);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);

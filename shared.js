@@ -221,11 +221,27 @@ function computeDollarValues(valuedResult, league) {
   return dollars;
 }
 
+// ── CAP SITUATION ──────────────────────────────────────────────────────────
+function computeCapSituation(rows, teamName, league) {
+  const used = rows
+    .filter(r => r.team === teamName)
+    .reduce((s, r) => s + (r.salary || 0), 0);
+  return { used: used, remaining: league.capPerTeam - used };
+}
+
+// PS/IR cap-impact preview: what a bid actually costs against the cap given
+// where the player would be rostered. Never affects the player's $ value.
+function applyCapImpact(bidAmount, slot, league) {
+  if (slot === 'PS') return bidAmount * league.psCapDiscount;
+  if (slot === 'IR') return bidAmount * league.irCapDiscount;
+  return bidAmount;
+}
+
 // ── NODE EXPORT (test-only; no-op in the browser) ─────────────────────────────
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     esc, parseCSV, parseCSVLine, parseLeagueTycoonCSV, scorePlayer,
     computeStartableCounts, computeReplacementLevels, valuePlayers,
-    computeDollarValues,
+    computeDollarValues, computeCapSituation, applyCapImpact,
   };
 }
