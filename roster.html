@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GridironAI — Roster</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    .team-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .team-row select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+    .cap-header { background: #fff; border-radius: 10px; padding: 14px 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); display: flex; gap: 28px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
+    .cap-item strong { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #999; margin-bottom: 3px; }
+    .cap-item span { font-size: 1.05rem; font-weight: 700; }
+    .cap-over { color: #c62828; }
+    .cap-illegal { margin-top: 0; }
+    .warn-hard { padding: 9px 14px; background: #fce8e6; border-left: 4px solid #c62828; border-radius: 4px; font-size: 0.84rem; color: #c62828; font-weight: 700; }
+    .lineup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .slot-card { padding: 14px 16px; }
+    .slot-card.empty { background: #fafafa; border: 1px dashed #ccc; box-shadow: none; }
+    .slot-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: #999; margin-bottom: 6px; }
+    .slot-name { font-size: 0.98rem; font-weight: 700; margin-bottom: 2px; }
+    .slot-sub { font-size: 0.8rem; color: #777; margin-bottom: 8px; }
+    .slot-stats { display: flex; justify-content: space-between; font-size: 0.86rem; }
+    .slot-empty-text { color: #aaa; font-size: 0.86rem; }
+    .bench-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); font-size: 0.86rem; }
+    th { background: #1a73e8; color: #fff; padding: 9px 10px; text-align: right; font-weight: 600; }
+    th:first-child, th:nth-child(2) { text-align: left; }
+    td { padding: 7px 10px; text-align: right; border-bottom: 1px solid #f0f0f0; }
+    td:first-child, td:nth-child(2) { text-align: left; }
+  </style>
+</head>
+<body>
+  <h1>Roster</h1>
+  <nav class="nav">
+    <a href="index.html">Data Hub</a>
+    <a href="bid.html">Bid Advisor</a>
+    <a href="roster.html" class="active">Roster</a>
+  </nav>
+
+  <div id="error"></div>
+  <div id="content" style="display:none">
+    <div class="team-row">
+      <label for="teamSelect" style="font-size:0.9rem">Viewing:</label>
+      <select id="teamSelect"></select>
+    </div>
+
+    <div class="cap-header" id="capHeader"></div>
+
+    <div class="section-title">Starting Lineup</div>
+    <div class="lineup-grid" id="lineupGrid"></div>
+
+    <div class="section-title">Bench</div>
+    <div class="bench-wrap">
+      <table>
+        <thead><tr><th>Player</th><th>Pos</th><th>Team</th><th>Pts</th><th>Salary</th></tr></thead>
+        <tbody id="benchBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="leagues.js"></script>
+  <script src="shared.js"></script>
+  <script>
+  (async function () {
+    await autoLoadFromRepo();
+
+    const errEl = document.getElementById('error');
+    const content = document.getElementById('content');
+    function showErr(msg, linkText, linkHref) {
+      const d = document.createElement('div');
+      d.className = 'error';
+      d.textContent = msg + (linkText ? ' ' : '');
+      if (linkText) {
+        const a = document.createElement('a');
+        a.href = linkHref;
+        a.textContent = linkText;
+        d.appendChild(a);
+      }
+      errEl.appendChild(d);
+    }
+
+    const LEAGUE = LEAGUES[0];
+    const players = loadData('gridiron_players');
+    const myTeam = loadData('gridiron_my_team') || '';
+    if (!players) { showErr('Missing data — upload the CSV on the', 'Data Hub.', 'index.html'); return; }
+
+    content.style.display = '';
+
+    const valued = valuePlayers(players, LEAGUE);
+    const teams = Array.from(new Set(players.filter(p => !p.isFreeAgent).map(p => p.team))).sort();
+
+    const teamSelect = document.getElementById('teamSelect');
+    teams.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t; // textContent — never innerHTML — team names come from the CSV
+      if (t === myTeam) opt.selected = true;
+      teamSelect.appendChild(opt);
+    });
+    if (!myTeam && teams.length) teamSelect.value = teams[0];
+
+    function slotCard(label, p) {
+      const card = document.createElement('div');
+      card.className = 'card slot-card' + (p ? '' : ' empty');
+      const lbl = document.createElement('div');
+      lbl.className = 'slot-label';
+      lbl.textContent = label;
+      card.appendChild(lbl);
+      if (!p) {
+        const empty = document.createElement('div');
+        empty.className = 'slot-empty-text';
+        empty.textContent = 'Empty';
+        card.appendChild(empty);
+        return card;
+      }
+      const name = document.createElement('div');
+      name.className = 'slot-name';
+      name.textContent = p.name;
+      card.appendChild(name);
+      const sub = document.createElement('div');
+      sub.className = 'slot-sub';
+      sub.textContent = p.position + ' · ' + p.nflTeam;
+      card.appendChild(sub);
+      const stats = document.createElement('div');
+      stats.className = 'slot-stats';
+      const pts = document.createElement('span');
+      pts.textContent = p.points.toFixed(1) + ' pts';
+      const sal = document.createElement('span');
+      sal.textContent = p.salary != null ? '$' + p.salary : '—';
+      stats.appendChild(pts);
+      stats.appendChild(sal);
+      card.appendChild(stats);
+      return card;
+    }
+
+    function renderCapHeader(cap, used) {
+      const h = document.getElementById('capHeader');
+      while (h.firstChild) h.removeChild(h.firstChild);
+      function item(label, value, cls) {
+        const it = document.createElement('div');
+        it.className = 'cap-item';
+        const strong = document.createElement('strong');
+        strong.textContent = label;
+        const span = document.createElement('span');
+        span.textContent = value;
+        if (cls) span.className = cls;
+        it.appendChild(strong);
+        it.appendChild(span);
+        return it;
+      }
+      h.appendChild(item('Committed salary', '$' + cap.used));
+      h.appendChild(item('Cap remaining', '$' + cap.remaining, cap.remaining < 0 ? 'cap-over' : ''));
+      if (!isCapLegal(0, used, LEAGUE)) {
+        const w = document.createElement('div');
+        w.className = 'warn-hard cap-illegal';
+        w.textContent = 'OVER THE CAP — this roster is not legal.';
+        h.appendChild(w);
+      }
+    }
+
+    function render() {
+      const team = teamSelect.value;
+      const myRoster = valued.players.filter(p => p.team === team);
+      const lineup = optimizeLineup(myRoster, LEAGUE.rosterSlots);
+      const cap = computeCapSituation(players, team, LEAGUE);
+
+      renderCapHeader(cap, cap.used);
+
+      const grid = document.getElementById('lineupGrid');
+      while (grid.firstChild) grid.removeChild(grid.firstChild);
+      const slotOrder = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'SUPERFLEX'];
+      slotOrder.forEach(slotKey => {
+        const n = LEAGUE.rosterSlots[slotKey] || 0;
+        for (let i = 0; i < n; i++) {
+          const p = lineup.bySlot[slotKey][i];
+          grid.appendChild(slotCard(slotKey + (n > 1 ? ' ' + (i + 1) : ''), p));
+        }
+      });
+
+      const benchBody = document.getElementById('benchBody');
+      while (benchBody.firstChild) benchBody.removeChild(benchBody.firstChild);
+      lineup.bench.slice().sort((a, b) => b.points - a.points).forEach(p => {
+        const tr = document.createElement('tr');
+        [p.name, p.position, p.nflTeam, p.points.toFixed(1), p.salary != null ? '$' + p.salary : '—'].forEach(text => {
+          const td = document.createElement('td');
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        benchBody.appendChild(tr);
+      });
+    }
+
+    teamSelect.addEventListener('change', render);
+    render();
+  })();
+  </script>
+</body>
+</html>
