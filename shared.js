@@ -375,6 +375,45 @@ function matchBioData(players, bioRows) {
   });
 }
 
+// ── AGE CURVE (rough approximation, not a real per-player projection) ───────
+// See docs/superpowers/specs for sourcing notes. minAge/maxAge define an
+// inclusive age bucket per position; maxAge 999 means "this age and up."
+function parseAgeCurveCSV(text) {
+  const rows = parseCSV(text);
+  return rows.map(row => ({
+    position: row['position'] || '',
+    minAge: Number(row['minAge']),
+    maxAge: Number(row['maxAge']),
+    multiplier: Number(row['multiplier']),
+  }));
+}
+
+function ageCurveMultiplier(position, age, curveRows) {
+  if (age == null) return null;
+  const row = curveRows.find(r => r.position === position && age >= r.minAge && age <= r.maxAge);
+  return row ? row.multiplier : null;
+}
+
+// Scales each future year's VALUE relative to the player's CURRENT-age
+// multiplier (year 0 always uses exactly 1x, so it reduces to this season's
+// real value), then re-subtracts the flat salary to get that year's surplus
+// — salary doesn't grow with an age curve, only production does, so scaling
+// the combined surplus number directly (rather than value alone) would
+// distort any player whose surplus is salary-dominated. Sums across `years`.
+// Returns null rather than a fake number when age or curve coverage is
+// missing — never silently substitutes a guess.
+function curveAdjustedTermValue(position, age, years, value, salary, curveRows) {
+  const base = ageCurveMultiplier(position, age, curveRows);
+  if (base == null) return null;
+  let sum = 0;
+  for (let i = 0; i < years; i++) {
+    const m = ageCurveMultiplier(position, age + i, curveRows);
+    const yearValue = m != null ? value * (m / base) : value;
+    sum += yearValue - salary;
+  }
+  return sum;
+}
+
 // ── LOCAL STORAGE ────────────────────────────────────────────────────────────
 function saveData(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
@@ -393,6 +432,7 @@ function loadData(key) {
 const REPO_FILES = [
   { file: 'leaguetycoon_players_contracts_2026.csv', key: 'gridiron_players', parse: parseLeagueTycoonCSV },
   { file: 'sleeper_bio_2026.csv', key: 'gridiron_bio', parse: parseSleeperBioCSV },
+  { file: 'age_curve_2026.csv', key: 'gridiron_age_curve', parse: parseAgeCurveCSV },
 ];
 
 async function autoLoadFromRepo() {
@@ -423,5 +463,6 @@ if (typeof module !== 'undefined' && module.exports) {
     computeDollarValues, computeCapSituation, applyCapImpact, isCapLegal,
     optimizeLineup, lineupImpact,
     parseSleeperBioCSV, normalizeName, matchBioData,
+    parseAgeCurveCSV, ageCurveMultiplier, curveAdjustedTermValue,
   };
 }

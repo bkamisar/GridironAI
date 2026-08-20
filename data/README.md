@@ -10,6 +10,7 @@ CSV files here are fetched automatically by the app on every page load
 |---|---|
 | `leaguetycoon_players_contracts_2026.csv` | League Tycoon export: ownership (team or FA), salary/contract years for rostered players, raw stat projections for all players |
 | `sleeper_bio_2026.csv` | Age/years-exp for active QB/RB/WR/TE, derived from Sleeper's public `/v1/players/nfl` endpoint (no auth, no rate limit — see below). Columns: `name,position,team,age,years_exp` |
+| `age_curve_2026.csv` | Rough position/age-bucket production-retention curve, hand-built from a handful of public articles (see `MODEL.md` §Contract Advisor). Columns: `position,minAge,maxAge,multiplier` — `maxAge` 999 means "this age and up." Not a real per-player projection; used only to weight future contract years relative to the present one. |
 
 ## Updating data
 

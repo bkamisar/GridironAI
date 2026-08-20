@@ -41,18 +41,20 @@
 
     <p class="assume-note">
       $ Value is this season's market value. Season Surplus = Value − Salary.
-      Term Value = Surplus × Years Left — a rough long-term signal, not a real
-      aging-curve projection. Age/Exp (from Sleeper's public player data) are
-      shown as context, not folded into any score — apply your own judgment
-      on aging curves, injury risk, and role trajectory on top of these
-      numbers.
+      Term Value = Surplus × Years Left — flat, no aging assumption. Curve-Adj
+      Term Value scales each future year by a rough position/age-bucket curve
+      (sourced from a handful of public articles, not a real per-player
+      projection — see MODEL.md) instead of counting every future year the
+      same. Age/Exp (from Sleeper's public player data) are shown as context
+      too — apply your own judgment on injury risk and role trajectory on top
+      of all of this.
     </p>
 
     <div class="tbl-wrap">
       <table>
         <thead><tr>
           <th>Player</th><th>Pos</th><th>Team</th><th>Age</th><th>Exp</th><th>$ Value</th><th>Salary</th>
-          <th>Years Left</th><th>Season Surplus</th><th>Term Value</th><th>Read</th>
+          <th>Years Left</th><th>Season Surplus</th><th>Term Value</th><th>Curve-Adj Term Value</th><th>Read</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
       </table>
@@ -93,6 +95,7 @@
 
     const bio = loadData('gridiron_bio');
     const valued = { players: bio ? matchBioData(valuedRaw.players, bio) : valuedRaw.players };
+    const ageCurve = loadData('gridiron_age_curve');
 
     const teams = Array.from(new Set(players.filter(p => !p.isFreeAgent).map(p => p.team))).sort();
     const teamSelect = document.getElementById('teamSelect');
@@ -122,7 +125,10 @@
           const salary = p.salary || 0;
           const years = p.years || 0;
           const surplus = value - salary;
-          return { p, value, salary, years, surplus, termValue: surplus * years };
+          const curveTermValue = ageCurve
+            ? curveAdjustedTermValue(p.position, p.age, years, value, salary, ageCurve)
+            : null;
+          return { p, value, salary, years, surplus, termValue: surplus * years, curveTermValue };
         })
         .sort((a, b) => b.termValue - a.termValue);
 
@@ -147,6 +153,15 @@
         termTd.textContent = (row.termValue >= 0 ? '+$' : '-$') + Math.abs(row.termValue);
         termTd.className = row.termValue >= 0 ? 'surplus-pos' : 'surplus-neg';
         tr.appendChild(termTd);
+        const curveTermTd = document.createElement('td');
+        if (row.curveTermValue == null) {
+          curveTermTd.textContent = '—';
+        } else {
+          const rounded = Math.round(row.curveTermValue);
+          curveTermTd.textContent = (rounded >= 0 ? '+$' : '-$') + Math.abs(rounded);
+          curveTermTd.className = rounded >= 0 ? 'surplus-pos' : 'surplus-neg';
+        }
+        tr.appendChild(curveTermTd);
         const recTd = document.createElement('td');
         const rec = recommendation(row.surplus);
         const badge = document.createElement('span');

@@ -117,7 +117,50 @@ value, so contract length doesn't get baked into the label — the user
 applies their own judgment (age, injury risk, role trajectory) on top of
 the raw numbers, deliberately not modeled here.
 
-## 9. Age / experience data (`matchBioData`)
+## 9. Curve-adjusted term value (`curveAdjustedTermValue`)
+
+`data/age_curve_2026.csv` is a **rough, hand-built approximation**, not a
+real per-player projection — a position × age-bucket multiplier table
+sourced from three public articles (4for4's "Production Curves" piece,
+PFF's 2021 WAR-by-age analysis, and The Athletic's 2000-2025 PFR
+Approximate-Value-by-age heatmap), reconciled by hand. The Athletic chart
+was the most recent/best-sourced but was **downweighted for RB/WR/TE**
+after review: unconditional average-value-by-age numbers get more
+survivorship-biased at older ages (only unusually good players are still
+rostered at 34+, so that age band's average looks great for reasons that
+have nothing to do with a typical player's aging), which is exactly why
+the heatmap's TE curve peaked implausibly late (33-35) — treated as noise
+from a handful of outlier long-career TEs, not a real signal. QB was kept
+as read from the chart since two independent sources agreed on the same
+shape (peak ~29-33, decline after). Bucket table:
+
+| Position | ≤24 | 25-27 | 28-30 | 31-33 | 34+ |
+|---|---|---|---|---|---|
+| QB | 0.75 | 0.85 | 1.00 | 0.95 | 0.70 |
+| RB | 1.00 | 0.90 | 0.65 | 0.35 | 0.20 |
+| WR | 0.85 | 1.00 | 0.90 | 0.70 | 0.50 |
+| TE | 0.80 | 1.00 | 0.95 | 0.85 | 0.70 |
+
+`curveAdjustedTermValue(position, age, years, value, salary, curveRows)`
+scales each future contract year's **value** relative to the multiplier at
+the player's current age (year 0 always reduces to exactly this season's
+real value), then re-subtracts the flat `salary` each year and sums.
+**Scales value, not the combined surplus number** — salary doesn't grow
+with an age curve, only production does, so an earlier version that scaled
+`surplus` directly distorted any salary-dominated player (e.g. a $1-value
+player owed $13/yr swung from -$36 to a fabricated -$39 instead of barely
+moving) — caught via manual verification against real roster data before
+shipping, fixed, re-verified. Returns `null` (rendered as `—`) rather than
+a guess when age or curve coverage is missing.
+
+Shown in Contract Advisor as a separate **Curve-Adj Term Value** column
+alongside the flat one — never replaces it, and never feeds the
+Keeper/Fringe/Cut recommendation badge (that's still driven by season
+surplus alone). The point is to let the flat and curve-adjusted numbers be
+compared side by side, not to assert the curve-adjusted one is more
+"correct."
+
+## 10. Age / experience data (`matchBioData`)
 
 `data/sleeper_bio_2026.csv` is a filtered derivative of Sleeper's public,
 no-auth `/v1/players/nfl` endpoint (active QB/RB/WR/TE with a known age —
@@ -139,12 +182,14 @@ e.g. two active NFL players both named "Frank Gore" at RB), it narrows by
 roster data: 100% match rate across all 159 rostered valued-position
 players, 87.8% across the full 2,074-player valued pool (rostered + FA).
 
-Age/experience are displayed as **context only** (Contract Advisor's Age/
-Exp columns) — deliberately not folded into surplus, term value, or the
-Keeper/Fringe/Cut badges. There's no real aging-curve model here; the user
-applies that judgment themselves on top of the raw numbers.
+Age/experience are displayed as context (Contract Advisor's Age/Exp
+columns) and feed the rough curve-adjusted term value described in §9 —
+but never the flat season surplus, flat term value, or the Keeper/Fringe/
+Cut badges, which stay age-agnostic. The user applies their own judgment
+(injury risk, role trajectory, and how much to trust the rough curve at
+all) on top of both numbers.
 
-## 10. Tunable knobs
+## 11. Tunable knobs
 
 | Knob | Where | Current | Meaning |
 |---|---|---|---|
@@ -153,7 +198,7 @@ applies that judgment themselves on top of the raw numbers.
 | $ conversion population | `computeDollarValues` (`shared.js`) | starting + bench slots, excl. PS/IR | who gets an individually computed $ value vs. a flat $1 |
 | `psCapDiscount` / `irCapDiscount` | `leagues.js` | 25% / 50% | cap-impact preview multipliers |
 
-## 11. Known limitations (accepted for v1)
+## 12. Known limitations (accepted for v1)
 
 - K/DST have no individual $ values (flat $1/spot reserve only).
 - No multi-year dynasty valuation horizon — this is a single-season

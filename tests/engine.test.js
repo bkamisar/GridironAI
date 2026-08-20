@@ -442,5 +442,81 @@ test('matchBioData leaves age/yearsExp null when no match exists, rather than gu
   assert.strictEqual(matched[0].yearsExp, null);
 });
 
+// ── parseAgeCurveCSV / ageCurveMultiplier / curveAdjustedTermValue ──
+const AGE_CURVE_SAMPLE = [
+  'position,minAge,maxAge,multiplier',
+  'RB,0,24,1.00',
+  'RB,25,27,0.90',
+  'RB,28,30,0.65',
+  'RB,31,33,0.35',
+  'RB,34,999,0.20',
+  'WR,0,24,0.85',
+  'WR,25,27,1.00',
+  'WR,28,30,0.90',
+  'WR,31,33,0.70',
+  'WR,34,999,0.50',
+].join('\n');
+
+test('parseAgeCurveCSV parses position/age-bucket/multiplier rows', () => {
+  const rows = engine.parseAgeCurveCSV(AGE_CURVE_SAMPLE);
+  assert.strictEqual(rows.length, 10);
+  assert.deepStrictEqual(rows[0], { position: 'RB', minAge: 0, maxAge: 24, multiplier: 1.00 });
+  assert.deepStrictEqual(rows[4], { position: 'RB', minAge: 34, maxAge: 999, multiplier: 0.20 });
+});
+
+test('ageCurveMultiplier finds the bucket containing the given age', () => {
+  const rows = engine.parseAgeCurveCSV(AGE_CURVE_SAMPLE);
+  assert.strictEqual(engine.ageCurveMultiplier('RB', 23, rows), 1.00);
+  assert.strictEqual(engine.ageCurveMultiplier('RB', 26, rows), 0.90);
+  assert.strictEqual(engine.ageCurveMultiplier('RB', 40, rows), 0.20);
+  assert.strictEqual(engine.ageCurveMultiplier('WR', 29, rows), 0.90);
+});
+
+test('ageCurveMultiplier returns null for an uncovered position or missing age', () => {
+  const rows = engine.parseAgeCurveCSV(AGE_CURVE_SAMPLE);
+  assert.strictEqual(engine.ageCurveMultiplier('QB', 27, rows), null);
+  assert.strictEqual(engine.ageCurveMultiplier('RB', null, rows), null);
+});
+
+test('curveAdjustedTermValue applies 1x when future years stay in the same bucket', () => {
+  const rows = engine.parseAgeCurveCSV(AGE_CURVE_SAMPLE);
+  // RB age 31, value 100, salary 40 -> ages 31,32,33 all in the 31-33
+  // bucket, so value is unscaled each year: (100-40)*3 = 180.
+  const flat = engine.curveAdjustedTermValue('RB', 31, 3, 100, 40, rows);
+  assert.ok(Math.abs(flat - 180) < 0.001);
+});
+
+test('curveAdjustedTermValue scales VALUE (not the combined surplus) across a bucket change', () => {
+  const rows = engine.parseAgeCurveCSV(AGE_CURVE_SAMPLE);
+  // RB age 24 (mult 1.00), value 100, salary 40:
+  //  age24: value 100*1.00/1.00=100 -> surplus 60
+  //  age25: value 100*0.90/1.00=90  -> surplus 50 (25-27 bucket)
+  //  age26: value 90  -> surplus 50
+  // sum = 60+50+50 = 160
+  const declining = engine.curveAdjustedTermValue('RB', 24, 3, 100, 40, rows);
+  assert.ok(Math.abs(declining - 160) < 0.001);
+});
+
+test('curveAdjustedTermValue does not distort a salary-dominated (near-zero-value) player', () => {
+  const rows = engine.parseAgeCurveCSV(AGE_CURVE_SAMPLE);
+  // A $1-value TE owed $13/yr should barely move even as the multiplier
+  // rises from 0.80 to 1.00 across the bucket change, since there's almost
+  // no value to scale — NOT a proportional swing on the combined -$12
+  // surplus (that was the bug: scaling surplus directly instead of value).
+  const rowsTE = [
+    { position: 'TE', minAge: 0, maxAge: 24, multiplier: 0.80 },
+    { position: 'TE', minAge: 25, maxAge: 27, multiplier: 1.00 },
+  ];
+  const result = engine.curveAdjustedTermValue('TE', 23, 3, 1, 13, rowsTE);
+  // age23: 1*0.80/0.80=1 -> -12; age24: same -> -12; age25: 1*1.00/0.80=1.25 -> -11.75
+  assert.ok(Math.abs(result - (-35.75)) < 0.001);
+});
+
+test('curveAdjustedTermValue returns null when age or curve data is unavailable', () => {
+  const rows = engine.parseAgeCurveCSV(AGE_CURVE_SAMPLE);
+  assert.strictEqual(engine.curveAdjustedTermValue('RB', null, 3, 100, 40, rows), null);
+  assert.strictEqual(engine.curveAdjustedTermValue('QB', 27, 3, 100, 40, rows), null);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);
