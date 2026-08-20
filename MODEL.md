@@ -98,15 +98,35 @@ net change in total starting points. The Bid Advisor recomputes this for
 every candidate against the user's current roster (`myRoster` = valued
 players where `team === myTeam`).
 
-## 8. Tunable knobs
+## 8. Contract Advisor: surplus and term value
+
+`contract.html` ranks a team's roster by **term value** = season surplus
+(`$ value − salary`) × `years` (the `Years` column from the contracts
+CSV — clean 1-4 year values, verified against all 163 rostered players).
+
+This is deliberately **not** an Ottoneu-style multi-year dynasty formula
+(`Y0 + 0.90×Y1 + 0.81×Y2`) — that requires genuinely distinct projected
+stat lines per future year (Ottoneu gets these from separate BatX Y1/Y2
+exports), and no such multi-year projection source exists for this
+league. Term value is a single-season surplus scaled by contract length,
+not a projection of what the player will produce in years 2 and 3 — it
+answers "how much is this deal worth to me for as long as I hold it,"
+not "what will he score next year." Recommendation badges (`Keeper` /
+`Fringe` / `Cut candidate`) are driven by season surplus alone, not term
+value, so contract length doesn't get baked into the label — the user
+applies their own judgment (age, injury risk, role trajectory) on top of
+the raw numbers, deliberately not modeled here.
+
+## 9. Tunable knobs
 
 | Knob | Where | Current | Meaning |
 |---|---|---|---|
+| `SURPLUS_KEEPER_MIN` | `contract.html` | $10 | season surplus above which a player is a "Keeper" rather than "Fringe"; below $0 is "Cut candidate". Round approximation of Ottoneu's `TF_GAIN_MIN` (5) scaled from a $400 to a $1000 cap |
 | `kDstFlatReserve` | `leagues.js` | $1/spot | $ held off the pool per K/DST roster spot, since real bids happen even though they're unvalued |
 | $ conversion population | `computeDollarValues` (`shared.js`) | starting + bench slots, excl. PS/IR | who gets an individually computed $ value vs. a flat $1 |
 | `psCapDiscount` / `irCapDiscount` | `leagues.js` | 25% / 50% | cap-impact preview multipliers |
 
-## 9. Known limitations (accepted for v1)
+## 10. Known limitations (accepted for v1)
 
 - K/DST have no individual $ values (flat $1/spot reserve only).
 - No multi-year dynasty valuation horizon — this is a single-season

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GridironAI — Contract Advisor</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    .team-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .team-row select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+    .assume-note { font-size: 0.78rem; color: #888; margin: 4px 0 20px; max-width: 640px; }
+    .tbl-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); font-size: 0.86rem; }
+    th { background: #1a73e8; color: #fff; padding: 9px 10px; text-align: right; font-weight: 600; white-space: nowrap; }
+    th:first-child, th:nth-child(2) { text-align: left; }
+    td { padding: 7px 10px; text-align: right; border-bottom: 1px solid #f0f0f0; }
+    td:first-child, td:nth-child(2) { text-align: left; }
+    .surplus-pos { color: #1e7e34; font-weight: 600; }
+    .surplus-neg { color: #c62828; font-weight: 600; }
+    .rec-badge { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+    .rec-keeper { background: #e6f4ea; color: #1e7e34; }
+    .rec-fringe { background: #f5f5f5; color: #777; }
+    .rec-cut { background: #fce8e6; color: #c62828; }
+  </style>
+</head>
+<body>
+  <h1>Contract Advisor</h1>
+  <nav class="nav">
+    <a href="index.html">Data Hub</a>
+    <a href="bid.html">Bid Advisor</a>
+    <a href="roster.html">Roster</a>
+    <a href="trade.html">Trade Evaluator</a>
+    <a href="contract.html" class="active">Contract Advisor</a>
+  </nav>
+
+  <div id="error"></div>
+  <div id="content" style="display:none">
+    <div class="team-row">
+      <label for="teamSelect" style="font-size:0.9rem">Viewing:</label>
+      <select id="teamSelect"></select>
+    </div>
+
+    <p class="assume-note">
+      $ Value is this season's market value. Season Surplus = Value − Salary.
+      Term Value = Surplus × Years Left — a rough long-term signal, not a real
+      aging-curve projection. Use your own judgment on age, injury risk, and
+      role trajectory on top of these numbers.
+    </p>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Player</th><th>Pos</th><th>Team</th><th>$ Value</th><th>Salary</th>
+          <th>Years Left</th><th>Season Surplus</th><th>Term Value</th><th>Read</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="leagues.js"></script>
+  <script src="shared.js"></script>
+  <script>
+  (async function () {
+    await autoLoadFromRepo();
+
+    const errEl = document.getElementById('error');
+    const content = document.getElementById('content');
+    function showErr(msg, linkText, linkHref) {
+      const d = document.createElement('div');
+      d.className = 'error';
+      d.textContent = msg + (linkText ? ' ' : '');
+      if (linkText) {
+        const a = document.createElement('a');
+        a.href = linkHref;
+        a.textContent = linkText;
+        d.appendChild(a);
+      }
+      errEl.appendChild(d);
+    }
+
+    const LEAGUE = LEAGUES[0];
+    const players = loadData('gridiron_players');
+    const myTeam = loadData('gridiron_my_team') || '';
+    if (!players) { showErr('Missing data — upload the CSV on the', 'Data Hub.', 'index.html'); return; }
+
+    content.style.display = '';
+
+    const valued = valuePlayers(players, LEAGUE);
+    const dollars = computeDollarValues(valued, LEAGUE);
+    function dollarOf(p) { return dollars[p.id] || 1; }
+
+    const teams = Array.from(new Set(players.filter(p => !p.isFreeAgent).map(p => p.team))).sort();
+    const teamSelect = document.getElementById('teamSelect');
+    teams.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t; // textContent — never innerHTML — team names come from the CSV
+      if (t === myTeam) opt.selected = true;
+      teamSelect.appendChild(opt);
+    });
+    if (!myTeam && teams.length) teamSelect.value = teams[0];
+
+    const SURPLUS_KEEPER_MIN = 10; // $ — round approximation of Ottoneu's TF_GAIN_MIN scaled to this league's $1000 cap
+
+    function recommendation(surplus) {
+      if (surplus < 0) return { cls: 'rec-cut', text: 'Cut candidate' };
+      if (surplus < SURPLUS_KEEPER_MIN) return { cls: 'rec-fringe', text: 'Fringe' };
+      return { cls: 'rec-keeper', text: 'Keeper' };
+    }
+
+    function render() {
+      const team = teamSelect.value;
+      const roster = valued.players
+        .filter(p => p.team === team)
+        .map(p => {
+          const value = dollarOf(p);
+          const salary = p.salary || 0;
+          const years = p.years || 0;
+          const surplus = value - salary;
+          return { p, value, salary, years, surplus, termValue: surplus * years };
+        })
+        .sort((a, b) => b.termValue - a.termValue);
+
+      const tbody = document.getElementById('tbody');
+      while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+      roster.forEach(row => {
+        const tr = document.createElement('tr');
+        const cells = [row.p.name, row.p.position, row.p.nflTeam,
+          '$' + row.value, '$' + row.salary, String(row.years)];
+        cells.forEach(text => {
+          const td = document.createElement('td');
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        const surplusTd = document.createElement('td');
+        surplusTd.textContent = (row.surplus >= 0 ? '+$' : '-$') + Math.abs(row.surplus);
+        surplusTd.className = row.surplus >= 0 ? 'surplus-pos' : 'surplus-neg';
+        tr.appendChild(surplusTd);
+        const termTd = document.createElement('td');
+        termTd.textContent = (row.termValue >= 0 ? '+$' : '-$') + Math.abs(row.termValue);
+        termTd.className = row.termValue >= 0 ? 'surplus-pos' : 'surplus-neg';
+        tr.appendChild(termTd);
+        const recTd = document.createElement('td');
+        const rec = recommendation(row.surplus);
+        const badge = document.createElement('span');
+        badge.className = 'rec-badge ' + rec.cls;
+        badge.textContent = rec.text;
+        recTd.appendChild(badge);
+        tr.appendChild(recTd);
+        tbody.appendChild(tr);
+      });
+    }
+
+    teamSelect.addEventListener('change', render);
+    render();
+  })();
+  </script>
+</body>
+</html>
