@@ -370,5 +370,77 @@ test('lineupImpact reports null landedSlot and no bumps when the candidate does 
   assert.strictEqual(impact.pointsDelta, 0);
 });
 
+// ── parseSleeperBioCSV ──
+const SLEEPER_SAMPLE = [
+  'name,position,team,age,years_exp',
+  'Josh Allen,QB,BUF,30,8',
+  'Michael Penix,QB,ATL,26,1',
+  'Frank Gore,RB,,38,17',
+  'Frank Gore,RB,BUF,24,2',
+].join('\n');
+
+test('parseSleeperBioCSV parses name/position/team/age/years_exp', () => {
+  const rows = engine.parseSleeperBioCSV(SLEEPER_SAMPLE);
+  const allen = rows.find(r => r.name === 'Josh Allen');
+  assert.strictEqual(allen.position, 'QB');
+  assert.strictEqual(allen.team, 'BUF');
+  assert.strictEqual(allen.age, 30);
+  assert.strictEqual(allen.yearsExp, 8);
+});
+
+// ── normalizeName ──
+test('normalizeName lowercases, strips punctuation, and strips a Jr/Sr/II/III/IV suffix', () => {
+  assert.strictEqual(engine.normalizeName('Michael Penix Jr.'), 'michael penix');
+  assert.strictEqual(engine.normalizeName("Ja'Marr Chase"), 'jamarr chase');
+  assert.strictEqual(engine.normalizeName('A.J. Brown'), 'aj brown');
+  assert.strictEqual(engine.normalizeName('Travis Etienne III'), 'travis etienne');
+  assert.strictEqual(engine.normalizeName('Michael Penix'), 'michael penix');
+});
+
+// ── matchBioData ──
+function mkLTPlayer(id, name, position, nflTeam) {
+  return { id: id, name: name, position: position, nflTeam: nflTeam };
+}
+
+test('matchBioData attaches age/yearsExp on an exact name+position match', () => {
+  const players = [mkLTPlayer('p1', 'Josh Allen', 'QB', 'BUF')];
+  const bio = engine.parseSleeperBioCSV(SLEEPER_SAMPLE);
+  const matched = engine.matchBioData(players, bio);
+  assert.strictEqual(matched[0].age, 30);
+  assert.strictEqual(matched[0].yearsExp, 8);
+});
+
+test('matchBioData matches across a suffix difference (League Tycoon "Jr.", Sleeper without)', () => {
+  const players = [mkLTPlayer('p1', 'Michael Penix Jr.', 'QB', 'ATL')];
+  const bio = engine.parseSleeperBioCSV(SLEEPER_SAMPLE);
+  const matched = engine.matchBioData(players, bio);
+  assert.strictEqual(matched[0].age, 26);
+  assert.strictEqual(matched[0].yearsExp, 1);
+});
+
+test('matchBioData disambiguates a name+position collision using team', () => {
+  const players = [mkLTPlayer('p1', 'Frank Gore', 'RB', 'BUF')];
+  const bio = engine.parseSleeperBioCSV(SLEEPER_SAMPLE); // two "Frank Gore" RBs: no team, and BUF
+  const matched = engine.matchBioData(players, bio);
+  assert.strictEqual(matched[0].age, 24); // the BUF one, not the retired 38-year-old
+  assert.strictEqual(matched[0].yearsExp, 2);
+});
+
+test('matchBioData leaves age/yearsExp null when team cannot disambiguate a collision', () => {
+  const players = [mkLTPlayer('p1', 'Frank Gore', 'RB', 'DAL')]; // neither candidate is DAL
+  const bio = engine.parseSleeperBioCSV(SLEEPER_SAMPLE);
+  const matched = engine.matchBioData(players, bio);
+  assert.strictEqual(matched[0].age, null);
+  assert.strictEqual(matched[0].yearsExp, null);
+});
+
+test('matchBioData leaves age/yearsExp null when no match exists, rather than guessing', () => {
+  const players = [mkLTPlayer('p1', 'Some Undrafted Rookie', 'WR', 'KC')];
+  const bio = engine.parseSleeperBioCSV(SLEEPER_SAMPLE);
+  const matched = engine.matchBioData(players, bio);
+  assert.strictEqual(matched[0].age, null);
+  assert.strictEqual(matched[0].yearsExp, null);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);

@@ -321,6 +321,60 @@ function isCapLegal(currentUsed, additionalCommitment, league) {
   return currentUsed + additionalCommitment <= league.capPerTeam;
 }
 
+// ── SLEEPER BIO DATA (age / experience) ───────────────────────────────────────
+// data/sleeper_bio_2026.csv is a filtered derivative of Sleeper's public,
+// no-auth /v1/players/nfl endpoint (active QB/RB/WR/TE with a known age) —
+// see data/README.md for how to refresh it. Sleeper's own player names don't
+// always match League Tycoon's (e.g. suffixes like "Jr." are frequently
+// dropped), so matching goes through normalizeName rather than an exact
+// string compare.
+function parseSleeperBioCSV(text) {
+  const rows = parseCSV(text);
+  return rows.map(row => ({
+    name: row['name'] || '',
+    position: row['position'] || '',
+    team: row['team'] || '',
+    age: row['age'] !== '' && row['age'] != null ? Number(row['age']) : null,
+    yearsExp: row['years_exp'] !== '' && row['years_exp'] != null ? Number(row['years_exp']) : null,
+  }));
+}
+
+const NAME_SUFFIX_RE = /\s+(jr|sr|ii|iii|iv|v)\.?$/i;
+
+function normalizeName(name) {
+  let n = String(name).toLowerCase();
+  n = n.replace(NAME_SUFFIX_RE, '');
+  n = n.replace(/[.']/g, '');
+  n = n.replace(/\s+/g, ' ').trim();
+  return n;
+}
+
+// Attaches age/yearsExp (null if unmatched — never guessed) to each player.
+// Matches on normalizeName(name) + position; when that's ambiguous (a real
+// but rare case — e.g. two active "Frank Gore" RBs, one of them the son of
+// the well-known veteran), narrows by nflTeam. Still ambiguous after that ->
+// no match, rather than silently picking one and risking a wrong age.
+function matchBioData(players, bioRows) {
+  const index = {};
+  bioRows.forEach(row => {
+    const key = normalizeName(row.name) + '|' + row.position;
+    (index[key] = index[key] || []).push(row);
+  });
+  return players.map(p => {
+    const key = normalizeName(p.name) + '|' + p.position;
+    let candidates = index[key] || [];
+    if (candidates.length > 1) {
+      const byTeam = candidates.filter(c => c.team === p.nflTeam);
+      candidates = byTeam.length === 1 ? byTeam : [];
+    }
+    const match = candidates.length === 1 ? candidates[0] : null;
+    return Object.assign({}, p, {
+      age: match ? match.age : null,
+      yearsExp: match ? match.yearsExp : null,
+    });
+  });
+}
+
 // ── LOCAL STORAGE ────────────────────────────────────────────────────────────
 function saveData(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
@@ -338,6 +392,7 @@ function loadData(key) {
 // manual upload covers local testing, matching the OttoneuAI convention.
 const REPO_FILES = [
   { file: 'leaguetycoon_players_contracts_2026.csv', key: 'gridiron_players', parse: parseLeagueTycoonCSV },
+  { file: 'sleeper_bio_2026.csv', key: 'gridiron_bio', parse: parseSleeperBioCSV },
 ];
 
 async function autoLoadFromRepo() {
@@ -367,5 +422,6 @@ if (typeof module !== 'undefined' && module.exports) {
     computeStartableCounts, computeReplacementLevels, valuePlayers,
     computeDollarValues, computeCapSituation, applyCapImpact, isCapLegal,
     optimizeLineup, lineupImpact,
+    parseSleeperBioCSV, normalizeName, matchBioData,
   };
 }

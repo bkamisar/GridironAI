@@ -42,14 +42,16 @@
     <p class="assume-note">
       $ Value is this season's market value. Season Surplus = Value − Salary.
       Term Value = Surplus × Years Left — a rough long-term signal, not a real
-      aging-curve projection. Use your own judgment on age, injury risk, and
-      role trajectory on top of these numbers.
+      aging-curve projection. Age/Exp (from Sleeper's public player data) are
+      shown as context, not folded into any score — apply your own judgment
+      on aging curves, injury risk, and role trajectory on top of these
+      numbers.
     </p>
 
     <div class="tbl-wrap">
       <table>
         <thead><tr>
-          <th>Player</th><th>Pos</th><th>Team</th><th>$ Value</th><th>Salary</th>
+          <th>Player</th><th>Pos</th><th>Team</th><th>Age</th><th>Exp</th><th>$ Value</th><th>Salary</th>
           <th>Years Left</th><th>Season Surplus</th><th>Term Value</th><th>Read</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
@@ -85,9 +87,12 @@
 
     content.style.display = '';
 
-    const valued = valuePlayers(players, LEAGUE);
-    const dollars = computeDollarValues(valued, LEAGUE);
+    const valuedRaw = valuePlayers(players, LEAGUE);
+    const dollars = computeDollarValues(valuedRaw, LEAGUE);
     function dollarOf(p) { return dollars[p.id] || 1; }
+
+    const bio = loadData('gridiron_bio');
+    const valued = { players: bio ? matchBioData(valuedRaw.players, bio) : valuedRaw.players };
 
     const teams = Array.from(new Set(players.filter(p => !p.isFreeAgent).map(p => p.team))).sort();
     const teamSelect = document.getElementById('teamSelect');
@@ -126,6 +131,8 @@
       roster.forEach(row => {
         const tr = document.createElement('tr');
         const cells = [row.p.name, row.p.position, row.p.nflTeam,
+          row.p.age != null ? String(row.p.age) : '—',
+          row.p.yearsExp != null ? String(row.p.yearsExp) : '—',
           '$' + row.value, '$' + row.salary, String(row.years)];
         cells.forEach(text => {
           const td = document.createElement('td');

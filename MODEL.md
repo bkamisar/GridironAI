@@ -117,7 +117,34 @@ value, so contract length doesn't get baked into the label — the user
 applies their own judgment (age, injury risk, role trajectory) on top of
 the raw numbers, deliberately not modeled here.
 
-## 9. Tunable knobs
+## 9. Age / experience data (`matchBioData`)
+
+`data/sleeper_bio_2026.csv` is a filtered derivative of Sleeper's public,
+no-auth `/v1/players/nfl` endpoint (active QB/RB/WR/TE with a known age —
+see `data/README.md` for the refresh script). Investigated FantasyPros'
+public API first: it has age too, but the free tier caps every browse-style
+endpoint at 10 results with no way to search by name, making bulk coverage
+of a whole roster impractical. Sleeper's endpoint returns everyone in one
+uncapped call, so it won.
+
+`matchBioData(players, bioRows)` joins on `normalizeName(name) + position`
+— `normalizeName` lowercases, strips periods/apostrophes, and strips a
+trailing `Jr/Sr/II/III/IV/V` suffix, since Sleeper and League Tycoon
+disagree on suffixes often enough to matter (e.g. League Tycoon's "Michael
+Penix Jr." vs Sleeper's "Michael Penix"). When a normalized name+position
+matches more than one Sleeper row (rare — confirmed 6 cases league-wide,
+e.g. two active NFL players both named "Frank Gore" at RB), it narrows by
+`nflTeam`; if that still doesn't resolve to exactly one row, `age`/
+`yearsExp` are left `null` rather than guessing. Verified against the real
+roster data: 100% match rate across all 159 rostered valued-position
+players, 87.8% across the full 2,074-player valued pool (rostered + FA).
+
+Age/experience are displayed as **context only** (Contract Advisor's Age/
+Exp columns) — deliberately not folded into surplus, term value, or the
+Keeper/Fringe/Cut badges. There's no real aging-curve model here; the user
+applies that judgment themselves on top of the raw numbers.
+
+## 10. Tunable knobs
 
 | Knob | Where | Current | Meaning |
 |---|---|---|---|
@@ -126,7 +153,7 @@ the raw numbers, deliberately not modeled here.
 | $ conversion population | `computeDollarValues` (`shared.js`) | starting + bench slots, excl. PS/IR | who gets an individually computed $ value vs. a flat $1 |
 | `psCapDiscount` / `irCapDiscount` | `leagues.js` | 25% / 50% | cap-impact preview multipliers |
 
-## 10. Known limitations (accepted for v1)
+## 11. Known limitations (accepted for v1)
 
 - K/DST have no individual $ values (flat $1/spot reserve only).
 - No multi-year dynasty valuation horizon — this is a single-season
